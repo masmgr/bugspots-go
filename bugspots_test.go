@@ -9,12 +9,12 @@ import (
 // TestCalcScore tests the CalcScore function with various time ranges
 func TestCalcScore(t *testing.T) {
 	tests := []struct {
-		name       string
-		current    time.Time
-		oldest     time.Time
-		fixDate    time.Time
-		expected   float64
-		tolerance  float64
+		name      string
+		current   time.Time
+		oldest    time.Time
+		fixDate   time.Time
+		expected  float64
+		tolerance float64
 	}{
 		{
 			name:      "Fix at current date (most recent, t=1)",

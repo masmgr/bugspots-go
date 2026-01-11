@@ -54,7 +54,6 @@ jobs:
 
     - name: Format check
       run: |
-        gofmt -l .
         if [ -n "$(gofmt -l .)" ]; then
           echo "Go files need formatting:"
           gofmt -d .

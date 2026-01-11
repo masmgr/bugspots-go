@@ -74,28 +74,28 @@ func TestConvertToRegex_RegexValidity(t *testing.T) {
 // TestConvertToRegex_RegexMatching tests that the converted regex matches expected patterns
 func TestConvertToRegex_RegexMatching(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		testStrings   []string
-		shouldMatch   []bool
+		name        string
+		input       string
+		testStrings []string
+		shouldMatch []bool
 	}{
 		{
-			name:          "Match single word",
-			input:         "fix",
-			testStrings:   []string{"fix", "fixed", "fixing", "notafix"},
-			shouldMatch:   []bool{true, true, true, true},
+			name:        "Match single word",
+			input:       "fix",
+			testStrings: []string{"fix", "fixed", "fixing", "notafix"},
+			shouldMatch: []bool{true, true, true, true},
 		},
 		{
-			name:          "Match multiple words",
-			input:         "fix,close",
-			testStrings:   []string{"fix", "close", "closes", "resolve"},
-			shouldMatch:   []bool{true, true, true, false},
+			name:        "Match multiple words",
+			input:       "fix,close",
+			testStrings: []string{"fix", "close", "closes", "resolve"},
+			shouldMatch: []bool{true, true, true, false},
 		},
 		{
-			name:          "Case sensitive matching",
-			input:         "fix,close",
-			testStrings:   []string{"Fix", "CLOSE", "fix"},
-			shouldMatch:   []bool{false, false, true},
+			name:        "Case sensitive matching",
+			input:       "fix,close",
+			testStrings: []string{"Fix", "CLOSE", "fix"},
+			shouldMatch: []bool{false, false, true},
 		},
 	}
 

@@ -176,7 +176,7 @@ func CheckIfError(err error) {
 	if err == nil {
 		return
 	}
-	
+
 	color.Red(fmt.Sprintf("error: %s", err))
 	os.Exit(1)
 }
