@@ -1,0 +1,25 @@
+linters:
+  enable:
+    - vet           # Standard Go linter
+    - fmt           # Go fmt
+    - goimports     # Import organization
+    - errcheck      # Unchecked errors
+    - staticcheck   # Static analysis
+    - gosimple      # Code simplification
+  disable-all: true
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/igrigorik/bugspots-go
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+
+output:
+  formats:
+    - format: colored-line-number
+
+timeout: 5m
