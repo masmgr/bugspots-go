@@ -2,39 +2,6 @@ package output
 
 import "testing"
 
-func TestTruncatePath(t *testing.T) {
-	tests := []struct {
-		name     string
-		path     string
-		maxLen   int
-		expected string
-	}{
-		{name: "Short path", path: "cmd/main.go", maxLen: 50, expected: "cmd/main.go"},
-		{name: "Exact length", path: "a/b/c", maxLen: 5, expected: "a/b/c"},
-		{name: "Single segment fits", path: "short.go", maxLen: 50, expected: "short.go"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := truncatePath(tt.path, tt.maxLen)
-			if result != tt.expected {
-				t.Errorf("truncatePath(%q, %d) = %q, expected %q", tt.path, tt.maxLen, result, tt.expected)
-			}
-		})
-	}
-
-	// Long path should be truncated with "..." prefix
-	t.Run("Long path truncated", func(t *testing.T) {
-		result := truncatePath("very/deep/nested/directory/structure/file.go", 20)
-		if len(result) > 20 {
-			t.Errorf("truncatePath result length %d exceeds maxLen 20: %q", len(result), result)
-		}
-		if result[:3] != "..." {
-			t.Errorf("truncatePath should start with '...', got %q", result)
-		}
-	})
-}
-
 func TestTruncateMessage_Output(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -3,7 +3,6 @@ package output
 import (
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/fatih/color"
@@ -42,7 +41,7 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 		if options.Explain && item.Breakdown != nil {
 			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
 				i+1,
-				truncatePath(item.Path, 50),
+				item.Path,
 				item.RiskScore,
 				item.Metrics.CommitCount,
 				item.Metrics.ChurnTotal(),
@@ -57,7 +56,7 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 		} else {
 			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\n",
 				i+1,
-				truncatePath(item.Path, 50),
+				item.Path,
 				item.RiskScore,
 				item.Metrics.CommitCount,
 				item.Metrics.ChurnTotal(),
@@ -180,8 +179,8 @@ func (w *ConsoleCouplingWriter) Write(report *CouplingAnalysisReport, options Ou
 	for i, c := range couplings {
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%.3f\t%.3f\t%.2f\n",
 			i+1,
-			truncatePath(c.FileA, 35),
-			truncatePath(c.FileB, 35),
+			c.FileA,
+			c.FileB,
 			c.CoCommitCount,
 			c.JaccardCoefficient,
 			c.Confidence,
@@ -195,27 +194,6 @@ func (w *ConsoleCouplingWriter) Write(report *CouplingAnalysisReport, options Ou
 }
 
 // Helper functions
-
-func truncatePath(path string, maxLen int) string {
-	if len(path) <= maxLen {
-		return path
-	}
-	// Keep the last part of the path
-	parts := strings.Split(path, "/")
-	result := ""
-	for i := len(parts) - 1; i >= 0; i-- {
-		if result == "" {
-			result = parts[i]
-		} else {
-			newResult := parts[i] + "/" + result
-			if len(newResult) > maxLen-3 {
-				return "..." + result
-			}
-			result = newResult
-		}
-	}
-	return result
-}
 
 func truncateMessage(msg string, maxLen int) string {
 	if len(msg) <= maxLen {
