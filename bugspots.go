@@ -74,13 +74,15 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) []Fix {
 			return nil
 		}
 
+		// Skip commits without parents (initial commit)
+		if c.NumParents() == 0 {
+			return nil
+		}
+
 		tree, err := c.Tree()
 		CheckIfError(err)
 
-		parent, err2 := c.Parents().Next()
-		if parent == nil {
-			return nil
-		}
+		parent, err2 := c.Parent(0)
 		CheckIfError(err2)
 
 		parentTree, err2 := parent.Tree()
