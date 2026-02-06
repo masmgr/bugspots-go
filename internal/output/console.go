@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/fatih/color"
-	"github.com/olekukonko/tablewriter"
 )
 
 // ConsoleFileWriter writes file analysis reports to the console.
@@ -28,42 +28,46 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 	}
 	fmt.Printf("Total files analyzed: %d\n\n", len(report.Items))
 
-	table := tablewriter.NewWriter(os.Stdout)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
-	headers := []string{"#", "Path", "Score", "Commits", "Churn", "Contributors", "Burst"}
+	// Write header
 	if options.Explain {
-		headers = append(headers, "C", "Ch", "R", "B", "O")
+		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tC\tCh\tR\tB\tO")
+	} else {
+		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst")
 	}
-	table.SetHeader(headers)
 
-	table.SetBorder(false)
-	table.SetColumnSeparator(" ")
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-
+	// Write rows
 	for i, item := range items {
-		row := []string{
-			fmt.Sprintf("%d", i+1),
-			truncatePath(item.Path, 50),
-			fmt.Sprintf("%.4f", item.RiskScore),
-			fmt.Sprintf("%d", item.Metrics.CommitCount),
-			fmt.Sprintf("%d", item.Metrics.ChurnTotal()),
-			fmt.Sprintf("%d", item.Metrics.ContributorCount()),
-			fmt.Sprintf("%.2f", item.Metrics.BurstScore),
-		}
 		if options.Explain && item.Breakdown != nil {
-			row = append(row,
-				fmt.Sprintf("%.3f", item.Breakdown.CommitComponent),
-				fmt.Sprintf("%.3f", item.Breakdown.ChurnComponent),
-				fmt.Sprintf("%.3f", item.Breakdown.RecencyComponent),
-				fmt.Sprintf("%.3f", item.Breakdown.BurstComponent),
-				fmt.Sprintf("%.3f", item.Breakdown.OwnershipComponent),
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
+				i+1,
+				truncatePath(item.Path, 50),
+				item.RiskScore,
+				item.Metrics.CommitCount,
+				item.Metrics.ChurnTotal(),
+				item.Metrics.ContributorCount(),
+				item.Metrics.BurstScore,
+				item.Breakdown.CommitComponent,
+				item.Breakdown.ChurnComponent,
+				item.Breakdown.RecencyComponent,
+				item.Breakdown.BurstComponent,
+				item.Breakdown.OwnershipComponent,
+			)
+		} else {
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\n",
+				i+1,
+				truncatePath(item.Path, 50),
+				item.RiskScore,
+				item.Metrics.CommitCount,
+				item.Metrics.ChurnTotal(),
+				item.Metrics.ContributorCount(),
+				item.Metrics.BurstScore,
 			)
 		}
-		table.Append(row)
 	}
 
-	table.Render()
+	tw.Flush()
 
 	if options.Explain {
 		fmt.Println("\nScore breakdown: C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership")
@@ -91,42 +95,47 @@ func (w *ConsoleCommitWriter) Write(report *CommitAnalysisReport, options Output
 	}
 	fmt.Printf("Total commits analyzed: %d\n\n", len(report.Items))
 
-	table := tablewriter.NewWriter(os.Stdout)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
-	headers := []string{"#", "SHA", "Score", "Level", "Files", "Churn", "Entropy", "Message"}
+	// Write header
 	if options.Explain {
-		headers = append(headers, "D", "S", "E")
+		fmt.Fprintln(tw, "#\tSHA\tScore\tLevel\tFiles\tChurn\tEntropy\tMessage\tD\tS\tE")
+	} else {
+		fmt.Fprintln(tw, "#\tSHA\tScore\tLevel\tFiles\tChurn\tEntropy\tMessage")
 	}
-	table.SetHeader(headers)
 
-	table.SetBorder(false)
-	table.SetColumnSeparator(" ")
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-
+	// Write rows
 	for i, item := range items {
 		levelColor := getLevelColor(string(item.RiskLevel))
-		row := []string{
-			fmt.Sprintf("%d", i+1),
-			item.Metrics.SHA[:8],
-			fmt.Sprintf("%.4f", item.RiskScore),
-			levelColor(string(item.RiskLevel)),
-			fmt.Sprintf("%d", item.Metrics.FileCount),
-			fmt.Sprintf("%d", item.Metrics.TotalChurn()),
-			fmt.Sprintf("%.2f", item.Metrics.ChangeEntropy),
-			truncateMessage(item.Metrics.Message, 40),
-		}
 		if options.Explain && item.Breakdown != nil {
-			row = append(row,
-				fmt.Sprintf("%.3f", item.Breakdown.DiffusionComponent),
-				fmt.Sprintf("%.3f", item.Breakdown.SizeComponent),
-				fmt.Sprintf("%.3f", item.Breakdown.EntropyComponent),
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%s\t%d\t%d\t%.2f\t%s\t%.3f\t%.3f\t%.3f\n",
+				i+1,
+				item.Metrics.SHA[:8],
+				item.RiskScore,
+				levelColor(string(item.RiskLevel)),
+				item.Metrics.FileCount,
+				item.Metrics.TotalChurn(),
+				item.Metrics.ChangeEntropy,
+				truncateMessage(item.Metrics.Message, 40),
+				item.Breakdown.DiffusionComponent,
+				item.Breakdown.SizeComponent,
+				item.Breakdown.EntropyComponent,
+			)
+		} else {
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%s\t%d\t%d\t%.2f\t%s\n",
+				i+1,
+				item.Metrics.SHA[:8],
+				item.RiskScore,
+				levelColor(string(item.RiskLevel)),
+				item.Metrics.FileCount,
+				item.Metrics.TotalChurn(),
+				item.Metrics.ChangeEntropy,
+				truncateMessage(item.Metrics.Message, 40),
 			)
 		}
-		table.Append(row)
 	}
 
-	table.Render()
+	tw.Flush()
 
 	if options.Explain {
 		fmt.Println("\nScore breakdown: D=Diffusion, S=Size, E=Entropy")
@@ -157,33 +166,30 @@ func (w *ConsoleCouplingWriter) Write(report *CouplingAnalysisReport, options Ou
 		return nil
 	}
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"#", "File A", "File B", "Co-Commits", "Jaccard", "Confidence", "Lift"})
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
-	table.SetBorder(false)
-	table.SetColumnSeparator(" ")
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	// Write header
+	fmt.Fprintln(tw, "#\tFile A\tFile B\tCo-Commits\tJaccard\tConfidence\tLift")
 
 	couplings := result.Couplings
 	if options.Top > 0 && options.Top < len(couplings) {
 		couplings = couplings[:options.Top]
 	}
 
+	// Write rows
 	for i, c := range couplings {
-		row := []string{
-			fmt.Sprintf("%d", i+1),
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%.3f\t%.3f\t%.2f\n",
+			i+1,
 			truncatePath(c.FileA, 35),
 			truncatePath(c.FileB, 35),
-			fmt.Sprintf("%d", c.CoCommitCount),
-			fmt.Sprintf("%.3f", c.JaccardCoefficient),
-			fmt.Sprintf("%.3f", c.Confidence),
-			fmt.Sprintf("%.2f", c.Lift),
-		}
-		table.Append(row)
+			c.CoCommitCount,
+			c.JaccardCoefficient,
+			c.Confidence,
+			c.Lift,
+		)
 	}
 
-	table.Render()
+	tw.Flush()
 
 	return nil
 }
