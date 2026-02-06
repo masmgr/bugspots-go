@@ -100,7 +100,13 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) []Fix {
 			}
 		}
 
-		fixes = append(fixes, Fix{message: strings.Split(c.Message, "\n")[0], date: c.Committer.When, files: files})
+		// Extract first line of commit message efficiently
+		message := c.Message
+		if idx := strings.IndexByte(message, '\n'); idx != -1 {
+			message = message[:idx]
+		}
+
+		fixes = append(fixes, Fix{message: message, date: c.Committer.When, files: files})
 
 		return nil
 	})
