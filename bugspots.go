@@ -80,16 +80,24 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) []Fix {
 		}
 
 		tree, err := c.Tree()
-		CheckIfError(err)
+		if err != nil {
+			return err
+		}
 
-		parent, err2 := c.Parent(0)
-		CheckIfError(err2)
+		parent, err := c.Parent(0)
+		if err != nil {
+			return err
+		}
 
-		parentTree, err2 := parent.Tree()
-		CheckIfError(err2)
+		parentTree, err := parent.Tree()
+		if err != nil {
+			return err
+		}
 
-		changes, err2 := object.DiffTree(parentTree, tree)
-		CheckIfError(err2)
+		changes, err := object.DiffTree(parentTree, tree)
+		if err != nil {
+			return err
+		}
 
 		files := make([]string, 0, len(changes))
 		for _, change := range changes {
