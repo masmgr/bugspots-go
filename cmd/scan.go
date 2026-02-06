@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -239,7 +240,15 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) ([]scoring.LegacyFi
 			return err
 		}
 
-		changes, err := object.DiffTree(parentTree, tree)
+		// Use DiffTreeWithOptions with exact-rename detection for consistency
+		// with the modern reader. OnlyExactRenames avoids expensive content
+		// similarity work while still catching straightforward renames.
+		changes, err := object.DiffTreeWithOptions(context.Background(), parentTree, tree, &object.DiffTreeOptions{
+			DetectRenames:    true,
+			RenameScore:      100,
+			RenameLimit:      0,
+			OnlyExactRenames: true,
+		})
 		if err != nil {
 			return err
 		}
