@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/coupling"
+	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/urfave/cli/v2"
 )
@@ -44,7 +45,7 @@ func CouplingCmd() *cli.Command {
 
 func couplingAction(c *cli.Context) error {
 	// Create command context (handles config, dates, git reader)
-	ctx, err := NewCommandContext(c)
+	ctx, err := NewCommandContextWithGitDetail(c, git.ChangeDetailPathsOnly)
 	if err != nil {
 		return err
 	}

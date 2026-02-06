@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	fdiff "github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -52,6 +54,7 @@ func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer cIter.Close()
 
 	results := make([]CommitChangeSet, 0, 1000)
 
@@ -96,6 +99,27 @@ func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
 	}
 
 	return results, nil
+}
+
+func (r *HistoryReader) diffTreeOptions() *object.DiffTreeOptions {
+	switch r.opts.RenameDetect {
+	case RenameDetectOff:
+		return &object.DiffTreeOptions{DetectRenames: false}
+	case RenameDetectSimple:
+		// Exact renames only; avoids content similarity work.
+		return &object.DiffTreeOptions{
+			DetectRenames:    true,
+			RenameScore:      100,
+			RenameLimit:      0,
+			OnlyExactRenames: true,
+		}
+	case RenameDetectAggressive:
+		fallthrough
+	default:
+		// Copy to avoid accidental shared mutation.
+		opts := *object.DefaultDiffTreeOptions
+		return &opts
+	}
 }
 
 func (r *HistoryReader) resolveFromHash() (plumbing.Hash, error) {
@@ -154,13 +178,123 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 		return nil, err
 	}
 
-	patch, err := parent.Patch(c)
+	parentTree, err := parent.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := c.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	changes, err := object.DiffTreeWithOptions(context.Background(), parentTree, tree, r.diffTreeOptions())
+	if err != nil {
+		return nil, err
+	}
+
+	switch r.opts.DetailLevel {
+	case ChangeDetailPathsOnly:
+		return r.changesFromTreeDiff(changes)
+	default:
+		return r.changesWithLineStats(changes)
+	}
+}
+
+func (r *HistoryReader) changesFromTreeDiff(changes object.Changes) ([]FileChange, error) {
+	results := make([]FileChange, 0, len(changes))
+
+	for _, change := range changes {
+		// Skip non-file entries (directories, submodules, etc.).
+		if !change.From.TreeEntry.Mode.IsFile() && !change.To.TreeEntry.Mode.IsFile() {
+			continue
+		}
+
+		var path, oldPath string
+		var kind ChangeKind
+
+		switch {
+		case change.From.Name == "" && change.To.Name != "":
+			path = change.To.Name
+			kind = ChangeKindAdded
+		case change.From.Name != "" && change.To.Name == "":
+			path = change.From.Name
+			kind = ChangeKindDeleted
+		case change.From.Name != "" && change.To.Name != "" && change.From.Name != change.To.Name:
+			path = change.To.Name
+			oldPath = change.From.Name
+			kind = ChangeKindRenamed
+		default:
+			path = change.To.Name
+			if path == "" {
+				path = change.From.Name
+			}
+			kind = ChangeKindModified
+		}
+
+		if path == "" {
+			continue
+		}
+
+		matches, err := r.matchesFilters(path)
+		if err != nil {
+			return nil, err
+		}
+		if !matches {
+			continue
+		}
+
+		results = append(results, FileChange{
+			Path:         path,
+			OldPath:      oldPath,
+			LinesAdded:   0,
+			LinesDeleted: 0,
+			Kind:         kind,
+		})
+	}
+
+	return results, nil
+}
+
+func (r *HistoryReader) changesWithLineStats(changes object.Changes) ([]FileChange, error) {
+	filtered := make(object.Changes, 0, len(changes))
+
+	for _, change := range changes {
+		// Skip non-file entries (directories, submodules, etc.).
+		if !change.From.TreeEntry.Mode.IsFile() && !change.To.TreeEntry.Mode.IsFile() {
+			continue
+		}
+
+		path := change.To.Name
+		if path == "" {
+			path = change.From.Name
+		}
+		if path == "" {
+			continue
+		}
+
+		matches, err := r.matchesFilters(path)
+		if err != nil {
+			return nil, err
+		}
+		if !matches {
+			continue
+		}
+
+		filtered = append(filtered, change)
+	}
+
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+
+	patch, err := filtered.Patch()
 	if err != nil {
 		return nil, err
 	}
 
 	filePatches := patch.FilePatches()
-	changes := make([]FileChange, 0, len(filePatches))
+	results := make([]FileChange, 0, len(filePatches))
 
 	for _, filePatch := range filePatches {
 		from, to := filePatch.Files()
@@ -196,32 +330,27 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 			continue
 		}
 
-		// Apply filters
-		matches, err := r.matchesFilters(path)
-		if err != nil {
-			return nil, err
-		}
-		if !matches {
-			continue
-		}
-
-		// Calculate line stats using strings.Count to avoid allocations
+		// Calculate line stats using strings.Count to avoid allocations.
 		var added, deleted int
 		for _, chunk := range filePatch.Chunks() {
 			content := chunk.Content()
+			if len(content) == 0 {
+				continue
+			}
+
 			lineCount := strings.Count(content, "\n")
-			if len(content) > 0 && content[len(content)-1] != '\n' {
+			if content[len(content)-1] != '\n' {
 				lineCount++
 			}
 			switch chunk.Type() {
-			case 1: // Add
+			case fdiff.Add:
 				added += lineCount
-			case 2: // Delete
+			case fdiff.Delete:
 				deleted += lineCount
 			}
 		}
 
-		changes = append(changes, FileChange{
+		results = append(results, FileChange{
 			Path:         path,
 			OldPath:      oldPath,
 			LinesAdded:   added,
@@ -230,7 +359,7 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 		})
 	}
 
-	return changes, nil
+	return results, nil
 }
 
 // matchesFilters checks if a path matches the include/exclude filters.

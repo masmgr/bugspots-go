@@ -24,6 +24,12 @@ type CommandContext struct {
 // NewCommandContext creates a context from CLI flags.
 // It performs configuration loading, date parsing, repository opening, and history reading.
 func NewCommandContext(c *cli.Context) (*CommandContext, error) {
+	return NewCommandContextWithGitDetail(c, git.ChangeDetailFull)
+}
+
+// NewCommandContextWithGitDetail is like NewCommandContext, but allows callers to control
+// the Git history detail level for performance-sensitive commands.
+func NewCommandContextWithGitDetail(c *cli.Context, detail git.ChangeDetailLevel) (*CommandContext, error) {
 	// Load configuration
 	cfg, err := loadConfig(c)
 	if err != nil {
@@ -50,12 +56,13 @@ func NewCommandContext(c *cli.Context) (*CommandContext, error) {
 	branch := c.String("branch")
 
 	reader, err := git.NewHistoryReader(git.ReadOptions{
-		RepoPath: repoPath,
-		Branch:   branch,
-		Since:    since,
-		Until:    until,
-		Include:  cfg.Filters.Include,
-		Exclude:  cfg.Filters.Exclude,
+		RepoPath:    repoPath,
+		Branch:      branch,
+		Since:       since,
+		Until:       until,
+		Include:     cfg.Filters.Include,
+		Exclude:     cfg.Filters.Exclude,
+		DetailLevel: detail,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open repository: %w", err)
