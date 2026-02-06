@@ -91,7 +91,7 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) []Fix {
 		changes, err2 := object.DiffTree(parentTree, tree)
 		CheckIfError(err2)
 
-		var files []string
+		files := make([]string, 0, len(changes))
 		for _, change := range changes {
 			if change.From.Name != "" {
 				files = append(files, change.From.Name)
