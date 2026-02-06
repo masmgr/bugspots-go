@@ -91,7 +91,6 @@ func NewCommandContextWithGitDetail(c *cli.Context, detail git.ChangeDetailLevel
 		Exclude:      cfg.Filters.Exclude,
 		DetailLevel:  detail,
 		RenameDetect: renameDetect,
-		UseGitCLI:    true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open repository: %w", err)

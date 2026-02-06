@@ -10,9 +10,6 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/masmgr/bugspots-go/config"
 	gitpkg "github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/scoring"
@@ -126,33 +123,32 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 	start := time.Now()
 	color.Green("Scanning %v repo", repoPath)
 
-	// Open repository
-	r, err := git.PlainOpen(repoPath)
-	if err != nil {
-		return fmt.Errorf("invalid Git repository - please run from or specify the full path to the root of the project: %w", err)
-	}
-
-	// Resolve starting reference (branch/ref)
-	fromHash, err := resolveFromHash(r, branch)
-	if err != nil {
-		return err
-	}
-
 	// Calculate time range
 	until := time.Now()
 	since := until.AddDate(-cfg.Legacy.AnalysisWindowYears, 0, 0)
 
-	// Get commit iterator
-	cIter, err := r.Log(&git.LogOptions{From: fromHash, Since: &since, Until: &until})
+	// Read commit history using HistoryReader
+	reader, err := gitpkg.NewHistoryReader(gitpkg.ReadOptions{
+		RepoPath:     repoPath,
+		Branch:       branch,
+		Since:        &since,
+		Until:        &until,
+		Include:      cfg.Filters.Include,
+		Exclude:      cfg.Filters.Exclude,
+		DetailLevel:  gitpkg.ChangeDetailPathsOnly,
+		RenameDetect: gitpkg.RenameDetectSimple,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to get commit log: %w", err)
+		return fmt.Errorf("invalid Git repository - please run from or specify the full path to the root of the project: %w", err)
 	}
 
-	// Get fixes
-	fixes, err := getFixes(cIter, regex, cfg.Filters.Include, cfg.Filters.Exclude)
+	changeSets, err := reader.ReadChanges(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to get fixes: %w", err)
+		return fmt.Errorf("failed to read history: %w", err)
 	}
+
+	// Filter commits by bugfix regex and build fixes list
+	fixes := getFixes(changeSets, regex)
 
 	// Calculate hotspots
 	hotspots := scoring.CalculateLegacyHotspots(fixes, until, since)
@@ -164,138 +160,34 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 	return nil
 }
 
-func resolveFromHash(repo *git.Repository, branch string) (plumbing.Hash, error) {
-	branch = strings.TrimSpace(branch)
-	if branch == "" || strings.EqualFold(branch, "HEAD") {
-		ref, err := repo.Head()
-		if err != nil {
-			return plumbing.ZeroHash, fmt.Errorf("failed to get HEAD: %w", err)
-		}
-		return ref.Hash(), nil
-	}
-
-	remoteRef := plumbing.ReferenceName("")
-	if !strings.HasPrefix(branch, "refs/") && strings.Contains(branch, "/") {
-		if parts := strings.SplitN(branch, "/", 2); len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-			remoteRef = plumbing.NewRemoteReferenceName(parts[0], parts[1])
-		}
-	}
-
-	candidates := []plumbing.ReferenceName{
-		plumbing.ReferenceName(branch),
-		plumbing.NewBranchReferenceName(branch),
-		plumbing.NewRemoteReferenceName("origin", branch),
-		remoteRef,
-		plumbing.NewTagReferenceName(branch),
-	}
-
-	for _, name := range candidates {
-		if name == "" {
-			continue
-		}
-		ref, err := repo.Reference(name, true)
-		if err == nil {
-			return ref.Hash(), nil
-		}
-	}
-
-	h, err := repo.ResolveRevision(plumbing.Revision(branch))
-	if err == nil && h != nil {
-		return *h, nil
-	}
-
-	return plumbing.ZeroHash, fmt.Errorf("branch/ref not found: %q", branch)
-}
-
-func getFixes(cIter object.CommitIter, regex *regexp.Regexp, include, exclude []string) ([]scoring.LegacyFix, error) {
+func getFixes(changeSets []gitpkg.CommitChangeSet, regex *regexp.Regexp) []scoring.LegacyFix {
 	var fixes []scoring.LegacyFix
 
-	err := cIter.ForEach(func(c *object.Commit) error {
+	for _, cs := range changeSets {
 		// Check if commit message matches bugfix pattern
-		if regex != nil && len(regex.FindStringSubmatch(c.Message)) == 0 {
-			return nil
+		if regex != nil && !regex.MatchString(cs.Commit.Message) {
+			continue
 		}
 
-		// Skip commits without parents (initial commit)
-		if c.NumParents() == 0 {
-			return nil
-		}
-
-		// Skip merge commits
-		if c.NumParents() > 1 {
-			return nil
-		}
-
-		tree, err := c.Tree()
-		if err != nil {
-			return err
-		}
-
-		parent, err := c.Parent(0)
-		if err != nil {
-			return err
-		}
-
-		parentTree, err := parent.Tree()
-		if err != nil {
-			return err
-		}
-
-		// Use DiffTreeWithOptions with exact-rename detection for consistency
-		// with the modern reader. OnlyExactRenames avoids expensive content
-		// similarity work while still catching straightforward renames.
-		changes, err := object.DiffTreeWithOptions(context.Background(), parentTree, tree, &object.DiffTreeOptions{
-			DetectRenames:    true,
-			RenameScore:      100,
-			RenameLimit:      0,
-			OnlyExactRenames: true,
-		})
-		if err != nil {
-			return err
-		}
-
-		files := make([]string, 0, len(changes))
-		for _, change := range changes {
-			path := change.To.Name
-			if path == "" {
-				path = change.From.Name
+		files := make([]string, 0, len(cs.Changes))
+		for _, change := range cs.Changes {
+			if change.Path != "" {
+				files = append(files, change.Path)
 			}
-			if path == "" {
-				continue
-			}
-
-			// Apply glob filters (consistent with the modern reader)
-			matched, err := gitpkg.MatchesGlobFilters(strings.ReplaceAll(path, "\\", "/"), include, exclude)
-			if err != nil {
-				return err
-			}
-			if !matched {
-				continue
-			}
-
-			files = append(files, path)
 		}
 
 		if len(files) == 0 {
-			return nil
-		}
-
-		// Extract first line of commit message efficiently
-		message := c.Message
-		if idx := strings.IndexByte(message, '\n'); idx != -1 {
-			message = message[:idx]
+			continue
 		}
 
 		fixes = append(fixes, scoring.LegacyFix{
-			Message: message,
-			Date:    c.Committer.When,
+			Message: cs.Commit.Message,
+			Date:    cs.Commit.When,
 			Files:   files,
 		})
+	}
 
-		return nil
-	})
-
-	return fixes, err
+	return fixes
 }
 
 func showScanResult(fixes []scoring.LegacyFix, hotspots map[string]float64, maxSpots int, displayTimestamps bool) {

@@ -2,28 +2,21 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-
-	gogit "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 func TestHistoryReader_ReadChanges_RespectsBranch(t *testing.T) {
 	repoDir := t.TempDir()
 
-	repo, err := gogit.PlainInit(repoDir, false)
-	if err != nil {
-		t.Fatalf("PlainInit: %v", err)
-	}
-
-	wt, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Worktree: %v", err)
-	}
+	testRunGit(t, repoDir, "init")
+	testRunGit(t, repoDir, "config", "user.name", "Test")
+	testRunGit(t, repoDir, "config", "user.email", "test@example.com")
 
 	write := func(rel, content string) {
 		t.Helper()
@@ -34,57 +27,32 @@ func TestHistoryReader_ReadChanges_RespectsBranch(t *testing.T) {
 		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
-		if _, err := wt.Add(rel); err != nil {
-			t.Fatalf("Add: %v", err)
-		}
-	}
-
-	commit := func(msg string, when time.Time) {
-		t.Helper()
-		_, err := wt.Commit(msg, &gogit.CommitOptions{
-			Author: &object.Signature{
-				Name:  "Test",
-				Email: "test@example.com",
-				When:  when,
-			},
-			Committer: &object.Signature{
-				Name:  "Test",
-				Email: "test@example.com",
-				When:  when,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Commit: %v", err)
-		}
+		testRunGit(t, repoDir, "add", rel)
 	}
 
 	now := time.Now()
+
+	commit := func(msg string, when time.Time) {
+		t.Helper()
+		testRunGitWithEnv(t, repoDir, []string{
+			fmt.Sprintf("GIT_AUTHOR_DATE=%s", when.Format(time.RFC3339)),
+			fmt.Sprintf("GIT_COMMITTER_DATE=%s", when.Format(time.RFC3339)),
+		}, "commit", "-m", msg)
+	}
 
 	// Initial commit on base branch (will be skipped by HistoryReader because it has no parents).
 	write("file.txt", "initial\n")
 	commit("initial", now.Add(-3*time.Hour))
 
-	head, err := repo.Head()
-	if err != nil {
-		t.Fatalf("Head: %v", err)
-	}
-	baseBranch := head.Name()
-	baseBranchShort := baseBranch.Short()
+	baseBranchShort := testGitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
 
 	// Create feature branch and commit on it.
-	if err := wt.Checkout(&gogit.CheckoutOptions{
-		Branch: plumbing.NewBranchReferenceName("feature"),
-		Create: true,
-	}); err != nil {
-		t.Fatalf("Checkout(feature): %v", err)
-	}
+	testRunGit(t, repoDir, "checkout", "-b", "feature")
 	write("file.txt", "feature\n")
 	commit("feature commit", now.Add(-2*time.Hour))
 
 	// Back to base branch and commit there (should not show up when analyzing "feature").
-	if err := wt.Checkout(&gogit.CheckoutOptions{Branch: baseBranch}); err != nil {
-		t.Fatalf("Checkout(%s): %v", baseBranch, err)
-	}
+	testRunGit(t, repoDir, "checkout", baseBranchShort)
 	write("master.txt", "base\n")
 	commit("base commit", now.Add(-1*time.Hour))
 
@@ -125,4 +93,39 @@ func TestHistoryReader_ReadChanges_RespectsBranch(t *testing.T) {
 	if baseChanges[0].Commit.Message != "base commit" {
 		t.Fatalf("base head message = %q, expected %q", baseChanges[0].Commit.Message, "base commit")
 	}
+}
+
+// testRunGit runs a git command in the given directory (test helper).
+func testRunGit(t testing.TB, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+}
+
+// testRunGitWithEnv runs a git command with extra environment variables.
+func testRunGitWithEnv(t testing.TB, dir string, env []string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+}
+
+// testGitOutput runs a git command and returns its trimmed stdout.
+func testGitOutput(t testing.TB, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v failed: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
 }

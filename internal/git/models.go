@@ -85,7 +85,7 @@ const (
 type RenameDetectMode int
 
 const (
-	// RenameDetectAggressive matches go-git defaults (similarity-based rename detection).
+	// RenameDetectAggressive uses similarity-based rename detection (git -M60%).
 	// This is the historical behavior of this project.
 	RenameDetectAggressive RenameDetectMode = iota
 	// RenameDetectSimple performs only exact-rename detection (hash/path based) and
@@ -105,6 +105,5 @@ type ReadOptions struct {
 	Exclude      []string // Glob patterns to exclude
 	DetailLevel  ChangeDetailLevel
 	RenameDetect RenameDetectMode
-	UseGitCLI    bool                // Prefer invoking `git` for faster history reads (when available)
 	OnProgress   func(processed int) // Called after each commit is processed (optional)
 }

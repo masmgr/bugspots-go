@@ -8,13 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-git/go-git/v5/plumbing/filemode"
 )
 
 type gitRawEntry struct {
-	srcMode filemode.FileMode
-	dstMode filemode.FileMode
+	srcMode gitFileMode
+	dstMode gitFileMode
 	status  string // e.g. "M", "A", "D", "R100"
 	path    string // destination path (or path for non-renames)
 	oldPath string // source path for renames
@@ -50,7 +48,7 @@ func (r *HistoryReader) readChangesGitCLI(ctx context.Context) ([]CommitChangeSe
 	case RenameDetectSimple:
 		args = append(args, "-M100%")
 	case RenameDetectAggressive:
-		// Match go-git's default threshold (60).
+		// 60% similarity threshold for rename detection.
 		args = append(args, "-M60%")
 	}
 
@@ -92,7 +90,7 @@ func (r *HistoryReader) readChangesGitCLI(ctx context.Context) ([]CommitChangeSe
 
 		sha := string(fields[0])
 		parents := strings.TrimSpace(string(fields[1]))
-		// Skip commits without parents (initial commit), consistent with go-git reader.
+		// Skip commits without parents (initial commit).
 		if parents == "" {
 			continue
 		}
@@ -275,18 +273,6 @@ func parseGitNumstat(body []byte, rawEntries []gitRawEntry) ([]gitNumstat, error
 	}
 
 	return stats, nil
-}
-
-func parseGitFileMode(s string) (filemode.FileMode, error) {
-	if s == "" {
-		return filemode.Empty, nil
-	}
-	// Modes are printed as octal (e.g. 100644, 120000, 160000, 000000).
-	v, err := strconv.ParseUint(s, 8, 32)
-	if err != nil {
-		return filemode.Empty, fmt.Errorf("parse file mode %q: %w", s, err)
-	}
-	return filemode.FileMode(v), nil
 }
 
 func kindFromGitStatus(status, oldPath string) (ChangeKind, string) {

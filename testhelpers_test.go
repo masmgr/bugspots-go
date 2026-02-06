@@ -4,37 +4,31 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
-
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// createTestRepo creates a temporary git repository with test commits
-func createTestRepo(t *testing.T) (string, *git.Repository) {
-	// Create temporary directory
+// createTestRepo creates a temporary git repository with test commits.
+// Returns the directory path.
+func createTestRepo(t *testing.T) string {
+	t.Helper()
 	tmpDir := t.TempDir()
 
-	// Initialize bare repository
-	repo, err := git.PlainInit(tmpDir, false)
-	if err != nil {
-		t.Fatalf("Failed to initialize git repo: %v", err)
-	}
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
 
-	return tmpDir, repo
+	return tmpDir
 }
 
-// addCommitToRepo adds a commit to a test repository
-func addCommitToRepo(t *testing.T, repo *git.Repository, message string, filenames []string, commitTime time.Time) {
-	w, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
-	}
+// addCommitToRepo adds a commit to a test repository.
+func addCommitToRepo(t *testing.T, repoDir string, message string, filenames []string, commitTime time.Time) {
+	t.Helper()
 
 	// Create/modify files
 	for _, filename := range filenames {
-		filePath := fmt.Sprintf("%s/%s", w.Filesystem.Root(), filename)
+		filePath := fmt.Sprintf("%s/%s", repoDir, filename)
 
 		// Create directory if needed
 		dir := filePath[:len(filePath)-len(filename)]
@@ -50,25 +44,25 @@ func addCommitToRepo(t *testing.T, repo *git.Repository, message string, filenam
 
 	// Add files to staging area
 	for _, filename := range filenames {
-		_, err := w.Add(filename)
-		if err != nil {
-			t.Fatalf("Failed to add file: %v", err)
-		}
+		runGit(t, repoDir, "add", filename)
 	}
 
 	// Create commit with custom time
-	hash, err := w.Commit(message, &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Test Author",
-			Email: "test@example.com",
-			When:  commitTime,
-		},
-	})
-	if err != nil {
-		t.Fatalf("Failed to commit: %v", err)
+	env := []string{
+		fmt.Sprintf("GIT_AUTHOR_DATE=%s", commitTime.Format(time.RFC3339)),
+		fmt.Sprintf("GIT_COMMITTER_DATE=%s", commitTime.Format(time.RFC3339)),
+		fmt.Sprintf("GIT_AUTHOR_NAME=%s", "Test Author"),
+		fmt.Sprintf("GIT_AUTHOR_EMAIL=%s", "test@example.com"),
+		fmt.Sprintf("GIT_COMMITTER_NAME=%s", "Test Author"),
+		fmt.Sprintf("GIT_COMMITTER_EMAIL=%s", "test@example.com"),
 	}
-
-	_ = hash
+	cmd := exec.Command("git", "commit", "-m", message)
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to commit: %v\n%s", err, out)
+	}
 }
 
 // suppressOutput temporarily suppresses stdout for testing
@@ -102,13 +96,13 @@ func discardOutput(t *testing.T, fn func()) {
 	os.Stdout = oldStdout
 }
 
-// configureGitUser sets up git user config for test repo
-func configureGitUser(t *testing.T, repo *git.Repository) {
-	cfg, err := repo.Config()
+// runGit runs a git command in the given directory.
+func runGit(t testing.TB, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("Failed to get config: %v", err)
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
 	}
-
-	cfg.User.Name = "Test User"
-	cfg.User.Email = "test@example.com"
 }
