@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -16,81 +14,106 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// LegacyScanFlags returns the flags for the legacy scan command.
+// These are shared between ScanCmd and the root app (for backward compatibility).
+func LegacyScanFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:    "branch",
+			Aliases: []string{"b"},
+			Value:   "",
+			Usage:   "Branch to analyze (default: from config or 'master')",
+		},
+		&cli.IntFlag{
+			Name:    "depth",
+			Aliases: []string{"d"},
+			Usage:   "Depth of commits to analyze (not implemented)",
+		},
+		&cli.StringFlag{
+			Name:    "words",
+			Aliases: []string{"w"},
+			Usage:   "Bugfix indicator word list, e.g., \"fixes,closed\"",
+		},
+		&cli.StringFlag{
+			Name:    "regex",
+			Aliases: []string{"r"},
+			Usage:   "Bugfix indicator regex pattern",
+		},
+		&cli.BoolFlag{
+			Name:  "display-timestamps",
+			Usage: "Show timestamps of each identified fix commit",
+		},
+	}
+}
+
 // ScanCmd creates the scan command for legacy bugspots analysis.
 func ScanCmd() *cli.Command {
 	return &cli.Command{
 		Name:      "scan",
 		Usage:     "Classic bugspots analysis (legacy compatibility)",
 		ArgsUsage: "[repository path]",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "branch",
-				Aliases: []string{"b"},
-				Value:   "",
-				Usage:   "Branch to analyze (default: from config or 'master')",
-			},
-			&cli.IntFlag{
-				Name:    "depth",
-				Aliases: []string{"d"},
-				Usage:   "Depth of commits to analyze (not implemented)",
-			},
-			&cli.StringFlag{
-				Name:    "words",
-				Aliases: []string{"w"},
-				Usage:   "Bugfix indicator word list, e.g., \"fixes,closed\"",
-			},
-			&cli.StringFlag{
-				Name:    "regex",
-				Aliases: []string{"r"},
-				Usage:   "Bugfix indicator regex pattern",
-			},
-			&cli.BoolFlag{
-				Name:  "display-timestamps",
-				Usage: "Show timestamps of each identified fix commit",
-			},
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Path to configuration file",
-			},
-		},
-		Action: scanAction,
+		Flags:     LegacyScanFlags(),
+		Action:    scanAction,
 	}
 }
 
 func scanAction(c *cli.Context) error {
+	// Legacy: repo path from positional arg
+	if c.NArg() > 0 && !c.IsSet("repo") {
+		_ = c.Set("repo", c.Args().Get(0))
+	}
+
 	// Load configuration
 	cfg, err := loadConfig(c)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get repository path
-	repoPath := "."
-	if c.NArg() > 0 {
-		repoPath = c.Args().Get(0)
+	// Apply default branch from config if not specified via flag
+	if !c.IsSet("branch") {
+		_ = c.Set("branch", cfg.Legacy.DefaultBranch)
 	}
 
-	// Get branch (from flag or config)
-	branch := c.String("branch")
-	if branch == "" {
-		branch = cfg.Legacy.DefaultBranch
+	// Apply default since date from config's analysis window
+	if !c.IsSet("since") {
+		since := time.Now().AddDate(-cfg.Legacy.AnalysisWindowYears, 0, 0)
+		_ = c.Set("since", since.Format("2006-01-02"))
 	}
+
+	ctx, err := NewCommandContextWithGitDetail(c, gitpkg.ChangeDetailPathsOnly)
+	if err != nil {
+		return err
+	}
+	defer ctx.LogCompletion()
+
+	color.Green("Scanning %v repo", ctx.RepoPath)
 
 	// Build regex pattern
-	regex, err := buildBugfixRegex(c, cfg)
+	regex, err := buildBugfixRegex(c, ctx.Config)
 	if err != nil {
 		return fmt.Errorf("failed to build regex: %w", err)
 	}
 
-	// Run the scan
-	return runScan(repoPath, branch, regex, cfg, c.Bool("display-timestamps"))
+	// Filter commits by bugfix regex and build fixes list
+	fixes := getFixes(ctx.ChangeSets, regex)
+
+	// Calculate hotspots
+	since := ctx.Until.AddDate(-ctx.Config.Legacy.AnalysisWindowYears, 0, 0)
+	if ctx.Since != nil {
+		since = *ctx.Since
+	}
+	hotspots := scoring.CalculateLegacyHotspots(fixes, ctx.Until, since)
+
+	// Display results
+	showScanResult(fixes, hotspots, ctx.Config.Legacy.MaxHotspots, c.Bool("display-timestamps"))
+
+	return nil
 }
 
 func buildBugfixRegex(c *cli.Context, cfg *config.Config) (*regexp.Regexp, error) {
 	var pattern string
 
 	if words := c.String("words"); words != "" {
-		// Convert word list to regex pattern
 		pattern = convertToRegex(words)
 	} else if regexStr := c.String("regex"); regexStr != "" {
 		pattern = regexStr
@@ -117,47 +140,6 @@ func convertToRegex(words string) string {
 		tokens = append(tokens, regexp.QuoteMeta(p))
 	}
 	return strings.Join(tokens, "|")
-}
-
-func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.Config, displayTimestamps bool) error {
-	start := time.Now()
-	color.Green("Scanning %v repo", repoPath)
-
-	// Calculate time range
-	until := time.Now()
-	since := until.AddDate(-cfg.Legacy.AnalysisWindowYears, 0, 0)
-
-	// Read commit history using HistoryReader
-	reader, err := gitpkg.NewHistoryReader(gitpkg.ReadOptions{
-		RepoPath:     repoPath,
-		Branch:       branch,
-		Since:        &since,
-		Until:        &until,
-		Include:      cfg.Filters.Include,
-		Exclude:      cfg.Filters.Exclude,
-		DetailLevel:  gitpkg.ChangeDetailPathsOnly,
-		RenameDetect: gitpkg.RenameDetectSimple,
-	})
-	if err != nil {
-		return fmt.Errorf("invalid Git repository - please run from or specify the full path to the root of the project: %w", err)
-	}
-
-	changeSets, err := reader.ReadChanges(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to read history: %w", err)
-	}
-
-	// Filter commits by bugfix regex and build fixes list
-	fixes := getFixes(changeSets, regex)
-
-	// Calculate hotspots
-	hotspots := scoring.CalculateLegacyHotspots(fixes, until, since)
-
-	// Display results
-	showScanResult(fixes, hotspots, cfg.Legacy.MaxHotspots, displayTimestamps)
-
-	fmt.Fprintf(os.Stderr, "\nCompleted in %s\n", time.Since(start))
-	return nil
 }
 
 func getFixes(changeSets []gitpkg.CommitChangeSet, regex *regexp.Regexp) []scoring.LegacyFix {

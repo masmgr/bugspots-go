@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/aggregation"
@@ -52,13 +51,12 @@ func AnalyzeCmd() *cli.Command {
 }
 
 func analyzeAction(c *cli.Context) error {
-	start := time.Now()
-
 	// Create command context (handles config, dates, git reader)
 	ctx, err := NewCommandContext(c)
 	if err != nil {
 		return err
 	}
+	defer ctx.LogCompletion()
 
 	if !ctx.HasCommits() {
 		ctx.PrintNoCommitsMessage()
@@ -66,12 +64,7 @@ func analyzeAction(c *cli.Context) error {
 	}
 
 	// Override config from CLI flags
-	if halfLife := c.Int("half-life"); halfLife > 0 {
-		ctx.Config.Scoring.HalfLifeDays = halfLife
-	}
-	if windowDays := c.Int("window-days"); windowDays > 0 {
-		ctx.Config.Burst.WindowDays = windowDays
-	}
+	ctx.ApplyCLIOverrides(c)
 
 	// Aggregate file metrics
 	aggregator := aggregation.NewFileMetricsAggregator()
@@ -127,8 +120,6 @@ func analyzeAction(c *cli.Context) error {
 	if err := writer.Write(report, opts); err != nil {
 		return err
 	}
-
-	fmt.Fprintf(os.Stderr, "\nCompleted in %s\n", time.Since(start))
 
 	// Check CI threshold
 	if threshold := c.Float64("ci-threshold"); threshold > 0 && len(items) > 0 {

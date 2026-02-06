@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/coupling"
@@ -46,13 +44,12 @@ func CouplingCmd() *cli.Command {
 }
 
 func couplingAction(c *cli.Context) error {
-	start := time.Now()
-
 	// Create command context (handles config, dates, git reader)
 	ctx, err := NewCommandContextWithGitDetail(c, git.ChangeDetailPathsOnly)
 	if err != nil {
 		return err
 	}
+	defer ctx.LogCompletion()
 
 	if !ctx.HasCommits() {
 		ctx.PrintNoCommitsMessage()
@@ -60,18 +57,7 @@ func couplingAction(c *cli.Context) error {
 	}
 
 	// Override config from CLI flags
-	if minCoCommits := c.Int("min-co-commits"); minCoCommits > 0 {
-		ctx.Config.Coupling.MinCoCommits = minCoCommits
-	}
-	if minJaccard := c.Float64("min-jaccard"); minJaccard > 0 {
-		ctx.Config.Coupling.MinJaccardThreshold = minJaccard
-	}
-	if maxFiles := c.Int("max-files"); maxFiles > 0 {
-		ctx.Config.Coupling.MaxFilesPerCommit = maxFiles
-	}
-	if topPairs := c.Int("top-pairs"); topPairs > 0 {
-		ctx.Config.Coupling.TopPairs = topPairs
-	}
+	ctx.ApplyCLIOverrides(c)
 
 	// Analyze coupling
 	analyzer := coupling.NewAnalyzer(ctx.Config.Coupling)
@@ -93,6 +79,5 @@ func couplingAction(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "\nCompleted in %s\n", time.Since(start))
 	return nil
 }
