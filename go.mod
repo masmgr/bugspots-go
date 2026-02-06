@@ -3,8 +3,10 @@ module github.com/masmgr/bugspots-go
 go 1.17
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.6.0
 	github.com/fatih/color v1.13.0
 	github.com/go-git/go-git/v5 v5.4.2
+	github.com/olekukonko/tablewriter v0.0.5
 	github.com/urfave/cli/v2 v2.3.0
 )
 
@@ -21,6 +23,7 @@ require (
 	github.com/kevinburke/ssh_config v0.0.0-20201106050909-4977a11b4351 // indirect
 	github.com/mattn/go-colorable v0.1.9 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
+	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/russross/blackfriday/v2 v2.0.1 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
