@@ -64,6 +64,11 @@ func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
 			return nil
 		}
 
+		// Skip merge commits
+		if c.NumParents() > 1 {
+			return nil
+		}
+
 		changes, err := r.getCommitChanges(c)
 		if err != nil {
 			return err

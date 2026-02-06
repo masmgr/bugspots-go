@@ -219,6 +219,11 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) ([]scoring.LegacyFi
 			return nil
 		}
 
+		// Skip merge commits
+		if c.NumParents() > 1 {
+			return nil
+		}
+
 		tree, err := c.Tree()
 		if err != nil {
 			return err
