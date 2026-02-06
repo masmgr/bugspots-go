@@ -10,10 +10,16 @@ import (
 type Config struct {
 	Scoring       ScoringConfig       `json:"scoring"`
 	Burst         BurstConfig         `json:"burst"`
+	Bugfix        BugfixConfig        `json:"bugfix"`
 	CommitScoring CommitScoringConfig `json:"commitScoring"`
 	Coupling      CouplingConfig      `json:"coupling"`
 	Filters       FilterConfig        `json:"filters"`
 	Legacy        LegacyConfig        `json:"legacy"`
+}
+
+// BugfixConfig holds bugfix detection configuration.
+type BugfixConfig struct {
+	Patterns []string `json:"patterns"` // Regex patterns for bugfix commit detection
 }
 
 // LegacyConfig holds configuration for legacy bugspots scan mode.
@@ -30,13 +36,14 @@ type ScoringConfig struct {
 	Weights      WeightConfig `json:"weights"`
 }
 
-// WeightConfig holds weights for 5-factor scoring.
+// WeightConfig holds weights for 6-factor scoring.
 type WeightConfig struct {
 	Commit    float64 `json:"commit"`
 	Churn     float64 `json:"churn"`
 	Recency   float64 `json:"recency"`
 	Burst     float64 `json:"burst"`
 	Ownership float64 `json:"ownership"`
+	Bugfix    float64 `json:"bugfix"`
 }
 
 // BurstConfig holds burst calculation options.
@@ -103,15 +110,24 @@ func DefaultConfig() *Config {
 		Scoring: ScoringConfig{
 			HalfLifeDays: 30,
 			Weights: WeightConfig{
-				Commit:    0.30,
-				Churn:     0.25,
-				Recency:   0.20,
-				Burst:     0.15,
+				Commit:    0.25,
+				Churn:     0.20,
+				Recency:   0.15,
+				Burst:     0.10,
 				Ownership: 0.10,
+				Bugfix:    0.20,
 			},
 		},
 		Burst: BurstConfig{
 			WindowDays: 7,
+		},
+		Bugfix: BugfixConfig{
+			Patterns: []string{
+				`\bfix(ed|es)?\b`,
+				`\bbug\b`,
+				`\bhotfix\b`,
+				`\bpatch\b`,
+			},
 		},
 		CommitScoring: CommitScoringConfig{
 			Weights: CommitWeightConfig{

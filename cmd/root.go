@@ -71,7 +71,7 @@ func commonFlags() []cli.Flag {
 		&cli.StringFlag{
 			Name:    "format",
 			Aliases: []string{"f"},
-			Usage:   "Output format (console, json, csv, markdown)",
+			Usage:   "Output format (console, json, csv, markdown, ci)",
 			Value:   "console",
 		},
 		&cli.IntFlag{
@@ -113,6 +113,8 @@ func getOutputFormat(s string) output.OutputFormat {
 		return output.FormatCSV
 	case "markdown", "md":
 		return output.FormatMarkdown
+	case "ci", "ndjson":
+		return output.FormatCI
 	default:
 		return output.FormatConsole
 	}

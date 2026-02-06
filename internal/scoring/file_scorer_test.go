@@ -17,13 +17,16 @@ func TestFromMetrics_Empty(t *testing.T) {
 	if ctx.ChurnTotal.Min != 0 || ctx.ChurnTotal.Max != 0 {
 		t.Errorf("ChurnTotal = {%f, %f}, expected {0, 0}", ctx.ChurnTotal.Min, ctx.ChurnTotal.Max)
 	}
+	if ctx.BugfixCount.Min != 0 || ctx.BugfixCount.Max != 0 {
+		t.Errorf("BugfixCount = {%f, %f}, expected {0, 0}", ctx.BugfixCount.Min, ctx.BugfixCount.Max)
+	}
 }
 
 func TestFromMetrics_Multiple(t *testing.T) {
 	metrics := map[string]*aggregation.FileMetrics{
-		"file1.go": {CommitCount: 2, AddedLines: 10, DeletedLines: 5},
-		"file2.go": {CommitCount: 10, AddedLines: 100, DeletedLines: 50},
-		"file3.go": {CommitCount: 5, AddedLines: 30, DeletedLines: 20},
+		"file1.go": {CommitCount: 2, AddedLines: 10, DeletedLines: 5, BugfixCount: 1},
+		"file2.go": {CommitCount: 10, AddedLines: 100, DeletedLines: 50, BugfixCount: 7},
+		"file3.go": {CommitCount: 5, AddedLines: 30, DeletedLines: 20, BugfixCount: 3},
 	}
 
 	ctx := FromMetrics(metrics)
@@ -33,6 +36,9 @@ func TestFromMetrics_Multiple(t *testing.T) {
 	}
 	if ctx.ChurnTotal.Min != 15 || ctx.ChurnTotal.Max != 150 {
 		t.Errorf("ChurnTotal = {%f, %f}, expected {15, 150}", ctx.ChurnTotal.Min, ctx.ChurnTotal.Max)
+	}
+	if ctx.BugfixCount.Min != 1 || ctx.BugfixCount.Max != 7 {
+		t.Errorf("BugfixCount = {%f, %f}, expected {1, 7}", ctx.BugfixCount.Min, ctx.BugfixCount.Max)
 	}
 }
 
@@ -116,6 +122,80 @@ func TestFileScorer_ScoreAndRank_ExplainBreakdown(t *testing.T) {
 	items = scorer.ScoreAndRank(metrics, false, now)
 	if items[0].Breakdown != nil {
 		t.Error("Breakdown should be nil when explain=false")
+	}
+}
+
+func TestFileScorer_ScoreAndRank_BugfixEffect(t *testing.T) {
+	scorer := NewFileScorer(config.DefaultConfig().Scoring)
+	now := time.Now()
+
+	metrics := map[string]*aggregation.FileMetrics{
+		"buggy.go": {
+			CommitCount:             5,
+			AddedLines:              50,
+			DeletedLines:            20,
+			LastModifiedAt:          now.Add(-7 * 24 * time.Hour),
+			Contributors:            map[string]struct{}{"a": {}},
+			ContributorCommitCounts: map[string]int{"a": 5},
+			BurstScore:              0.5,
+			BugfixCount:             10,
+			CommitTimes:             []time.Time{},
+		},
+		"clean.go": {
+			CommitCount:             5,
+			AddedLines:              50,
+			DeletedLines:            20,
+			LastModifiedAt:          now.Add(-7 * 24 * time.Hour),
+			Contributors:            map[string]struct{}{"a": {}},
+			ContributorCommitCounts: map[string]int{"a": 5},
+			BurstScore:              0.5,
+			BugfixCount:             0,
+			CommitTimes:             []time.Time{},
+		},
+	}
+
+	items := scorer.ScoreAndRank(metrics, true, now)
+
+	var buggyScore, cleanScore float64
+	for _, item := range items {
+		if item.Path == "buggy.go" {
+			buggyScore = item.RiskScore
+		}
+		if item.Path == "clean.go" {
+			cleanScore = item.RiskScore
+		}
+	}
+
+	if buggyScore <= cleanScore {
+		t.Errorf("Buggy file score %f should be > clean file score %f", buggyScore, cleanScore)
+	}
+}
+
+func TestFileScorer_ScoreAndRank_BugfixZero(t *testing.T) {
+	// When all files have BugfixCount=0, scoring should still work
+	scorer := NewFileScorer(config.DefaultConfig().Scoring)
+	now := time.Now()
+
+	metrics := map[string]*aggregation.FileMetrics{
+		"test.go": {
+			CommitCount:             5,
+			AddedLines:              50,
+			DeletedLines:            20,
+			LastModifiedAt:          now.Add(-7 * 24 * time.Hour),
+			Contributors:            map[string]struct{}{"a": {}},
+			ContributorCommitCounts: map[string]int{"a": 5},
+			BurstScore:              0.5,
+			BugfixCount:             0,
+			CommitTimes:             []time.Time{},
+		},
+	}
+
+	items := scorer.ScoreAndRank(metrics, true, now)
+	if len(items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(items))
+	}
+	if items[0].Breakdown.BugfixComponent != 0 {
+		t.Errorf("BugfixComponent should be 0 when BugfixCount=0, got %f", items[0].Breakdown.BugfixComponent)
 	}
 }
 

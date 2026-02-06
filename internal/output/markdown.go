@@ -40,32 +40,32 @@ func (w *MarkdownFileWriter) Write(report *FileAnalysisReport, options OutputOpt
 	fmt.Fprintln(out, "## Top Hotspots")
 	fmt.Fprintln(out)
 	if options.Explain {
-		fmt.Fprintln(out, "| # | Path | Score | Commits | Churn | Contributors | Burst | C | Ch | R | B | O |")
-		fmt.Fprintln(out, "|---|------|-------|---------|-------|--------------|-------|---|----|----|---|---|")
+		fmt.Fprintln(out, "| # | Path | Score | Commits | Churn | Contributors | Burst | Bugfixes | C | Ch | R | B | O | Bf |")
+		fmt.Fprintln(out, "|---|------|-------|---------|-------|--------------|-------|----------|---|----|----|---|---|----|")
 	} else {
-		fmt.Fprintln(out, "| # | Path | Score | Commits | Churn | Contributors | Burst |")
-		fmt.Fprintln(out, "|---|------|-------|---------|-------|--------------|-------|")
+		fmt.Fprintln(out, "| # | Path | Score | Commits | Churn | Contributors | Burst | Bugfixes |")
+		fmt.Fprintln(out, "|---|------|-------|---------|-------|--------------|-------|----------|")
 	}
 
 	// Table rows
 	for i, item := range items {
 		if options.Explain && item.Breakdown != nil {
-			fmt.Fprintf(out, "| %d | `%s` | %.4f | %d | %d | %d | %.2f | %.3f | %.3f | %.3f | %.3f | %.3f |\n",
+			fmt.Fprintf(out, "| %d | `%s` | %.4f | %d | %d | %d | %.2f | %d | %.3f | %.3f | %.3f | %.3f | %.3f | %.3f |\n",
 				i+1, item.Path, item.RiskScore, item.Metrics.CommitCount, item.Metrics.ChurnTotal(),
-				item.Metrics.ContributorCount(), item.Metrics.BurstScore,
+				item.Metrics.ContributorCount(), item.Metrics.BurstScore, item.Metrics.BugfixCount,
 				item.Breakdown.CommitComponent, item.Breakdown.ChurnComponent,
 				item.Breakdown.RecencyComponent, item.Breakdown.BurstComponent,
-				item.Breakdown.OwnershipComponent)
+				item.Breakdown.OwnershipComponent, item.Breakdown.BugfixComponent)
 		} else {
-			fmt.Fprintf(out, "| %d | `%s` | %.4f | %d | %d | %d | %.2f |\n",
+			fmt.Fprintf(out, "| %d | `%s` | %.4f | %d | %d | %d | %.2f | %d |\n",
 				i+1, item.Path, item.RiskScore, item.Metrics.CommitCount, item.Metrics.ChurnTotal(),
-				item.Metrics.ContributorCount(), item.Metrics.BurstScore)
+				item.Metrics.ContributorCount(), item.Metrics.BurstScore, item.Metrics.BugfixCount)
 		}
 	}
 
 	if options.Explain {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "**Score Breakdown:** C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership")
+		fmt.Fprintln(out, "**Score Breakdown:** C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership, Bf=Bugfix")
 	}
 
 	return nil

@@ -31,15 +31,15 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 
 	// Write header
 	if options.Explain {
-		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tC\tCh\tR\tB\tO")
+		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tBugfixes\tC\tCh\tR\tB\tO\tBf")
 	} else {
-		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst")
+		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tBugfixes")
 	}
 
 	// Write rows
 	for i, item := range items {
 		if options.Explain && item.Breakdown != nil {
-			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
 				i+1,
 				item.Path,
 				item.RiskScore,
@@ -47,14 +47,16 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 				item.Metrics.ChurnTotal(),
 				item.Metrics.ContributorCount(),
 				item.Metrics.BurstScore,
+				item.Metrics.BugfixCount,
 				item.Breakdown.CommitComponent,
 				item.Breakdown.ChurnComponent,
 				item.Breakdown.RecencyComponent,
 				item.Breakdown.BurstComponent,
 				item.Breakdown.OwnershipComponent,
+				item.Breakdown.BugfixComponent,
 			)
 		} else {
-			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\n",
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%d\n",
 				i+1,
 				item.Path,
 				item.RiskScore,
@@ -62,6 +64,7 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 				item.Metrics.ChurnTotal(),
 				item.Metrics.ContributorCount(),
 				item.Metrics.BurstScore,
+				item.Metrics.BugfixCount,
 			)
 		}
 	}
@@ -69,7 +72,7 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 	tw.Flush()
 
 	if options.Explain {
-		fmt.Println("\nScore breakdown: C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership")
+		fmt.Println("\nScore breakdown: C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership, Bf=Bugfix")
 	}
 
 	return nil

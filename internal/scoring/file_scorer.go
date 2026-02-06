@@ -23,12 +23,14 @@ type ScoreBreakdown struct {
 	RecencyComponent   float64
 	BurstComponent     float64
 	OwnershipComponent float64
+	BugfixComponent    float64
 }
 
 // NormalizationContext holds the min/max values needed for normalization.
 type NormalizationContext struct {
 	CommitCount MinMax
 	ChurnTotal  MinMax
+	BugfixCount MinMax
 }
 
 // FromMetrics computes the normalization context from file metrics.
@@ -36,16 +38,19 @@ func FromMetrics(metrics map[string]*aggregation.FileMetrics) NormalizationConte
 	ctx := NormalizationContext{
 		CommitCount: MinMax{Min: 0, Max: 0},
 		ChurnTotal:  MinMax{Min: 0, Max: 0},
+		BugfixCount: MinMax{Min: 0, Max: 0},
 	}
 
 	first := true
 	for _, fm := range metrics {
 		commitCount := float64(fm.CommitCount)
 		churnTotal := float64(fm.ChurnTotal())
+		bugfixCount := float64(fm.BugfixCount)
 
 		if first {
 			ctx.CommitCount = MinMax{Min: commitCount, Max: commitCount}
 			ctx.ChurnTotal = MinMax{Min: churnTotal, Max: churnTotal}
+			ctx.BugfixCount = MinMax{Min: bugfixCount, Max: bugfixCount}
 			first = false
 			continue
 		}
@@ -61,6 +66,12 @@ func FromMetrics(metrics map[string]*aggregation.FileMetrics) NormalizationConte
 		}
 		if churnTotal > ctx.ChurnTotal.Max {
 			ctx.ChurnTotal.Max = churnTotal
+		}
+		if bugfixCount < ctx.BugfixCount.Min {
+			ctx.BugfixCount.Min = bugfixCount
+		}
+		if bugfixCount > ctx.BugfixCount.Max {
+			ctx.BugfixCount.Max = bugfixCount
 		}
 	}
 
@@ -112,9 +123,12 @@ func (s *FileScorer) ScoreAndRank(
 		// Invert the ratio: 1.0 - ratio so that lower ownership ratio gives higher score
 		ownershipComponent := weights.Ownership * (1.0 - fm.OwnershipRatio())
 
+		// Calculate bugfix component
+		bugfixComponent := weights.Bugfix * NormLog(float64(fm.BugfixCount), ctx.BugfixCount)
+
 		// Calculate total score
 		totalScore := commitComponent + churnComponent + recencyComponent +
-			burstComponent + ownershipComponent
+			burstComponent + ownershipComponent + bugfixComponent
 
 		var breakdown *ScoreBreakdown
 		if explain {
@@ -124,6 +138,7 @@ func (s *FileScorer) ScoreAndRank(
 				RecencyComponent:   recencyComponent,
 				BurstComponent:     burstComponent,
 				OwnershipComponent: ownershipComponent,
+				BugfixComponent:    bugfixComponent,
 			}
 		}
 

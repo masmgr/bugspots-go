@@ -18,6 +18,7 @@ type FileMetrics struct {
 	ContributorCommitCounts map[string]int
 	CommitTimes             []time.Time
 	BurstScore              float64
+	BugfixCount             int      // Number of bugfix commits touching this file
 	cachedOwnershipRatio    *float64 // Cached ownership ratio to avoid repeated calculation
 }
 
@@ -211,6 +212,7 @@ func (a *FileMetricsAggregator) mergeMetrics(target, source *FileMetrics) {
 	}
 
 	target.CommitTimes = append(target.CommitTimes, source.CommitTimes...)
+	target.BugfixCount += source.BugfixCount
 
 	// Invalidate cache due to merged contributor counts / commit count changes.
 	target.cachedOwnershipRatio = nil
@@ -219,4 +221,20 @@ func (a *FileMetricsAggregator) mergeMetrics(target, source *FileMetrics) {
 // GetMetrics returns the aggregated metrics.
 func (a *FileMetricsAggregator) GetMetrics() map[string]*FileMetrics {
 	return a.metrics
+}
+
+// CanonicalPath returns the canonical (post-rename) path for a given path.
+func (a *FileMetricsAggregator) CanonicalPath(path string) string {
+	return a.canonicalPath(path)
+}
+
+// ApplyBugfixCounts merges bugfix detection results into file metrics.
+// It uses the aggregator's path aliases to resolve renamed files.
+func ApplyBugfixCounts(metrics map[string]*FileMetrics, aggregator *FileMetricsAggregator, fileBugfixCounts map[string]int) {
+	for path, count := range fileBugfixCounts {
+		canonical := aggregator.CanonicalPath(path)
+		if fm, ok := metrics[canonical]; ok {
+			fm.BugfixCount += count
+		}
+	}
 }

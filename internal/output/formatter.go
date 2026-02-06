@@ -15,6 +15,7 @@ var (
 	_ FileReportWriter = (*JSONFileWriter)(nil)
 	_ FileReportWriter = (*CSVFileWriter)(nil)
 	_ FileReportWriter = (*MarkdownFileWriter)(nil)
+	_ FileReportWriter = (*CIFileWriter)(nil)
 
 	// CommitReportWriter implementations
 	_ CommitReportWriter = (*ConsoleCommitWriter)(nil)
@@ -37,6 +38,7 @@ const (
 	FormatJSON     OutputFormat = "json"
 	FormatCSV      OutputFormat = "csv"
 	FormatMarkdown OutputFormat = "markdown"
+	FormatCI       OutputFormat = "ci"
 )
 
 // OutputOptions controls output behavior.
@@ -98,6 +100,8 @@ func NewFileReportWriter(format OutputFormat) FileReportWriter {
 		return &CSVFileWriter{}
 	case FormatMarkdown:
 		return &MarkdownFileWriter{}
+	case FormatCI:
+		return &CIFileWriter{}
 	default:
 		return &ConsoleFileWriter{}
 	}

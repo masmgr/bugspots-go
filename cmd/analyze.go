@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/aggregation"
+	"github.com/masmgr/bugspots-go/internal/bugfix"
 	"github.com/masmgr/bugspots-go/internal/burst"
+	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/masmgr/bugspots-go/internal/scoring"
 	"github.com/urfave/cli/v2"
@@ -25,12 +28,24 @@ func AnalyzeCmd() *cli.Command {
 			Usage: "Window size in days for burst detection",
 			Value: 7,
 		},
+		&cli.StringSliceFlag{
+			Name:  "bug-patterns",
+			Usage: "Regex patterns for bugfix commit detection (can be specified multiple times)",
+		},
+		&cli.StringFlag{
+			Name:  "diff",
+			Usage: "Analyze only files changed between refs (e.g., origin/main...HEAD)",
+		},
+		&cli.Float64Flag{
+			Name:  "ci-threshold",
+			Usage: "Exit with non-zero status if any file exceeds this risk score",
+		},
 	)
 
 	return &cli.Command{
 		Name:    "analyze",
 		Aliases: []string{"a"},
-		Usage:   "Analyze file hotspots using 5-factor scoring",
+		Usage:   "Analyze file hotspots using 6-factor scoring",
 		Flags:   flags,
 		Action:  analyzeAction,
 	}
@@ -62,6 +77,20 @@ func analyzeAction(c *cli.Context) error {
 	aggregator := aggregation.NewFileMetricsAggregator()
 	metrics := aggregator.Process(ctx.ChangeSets)
 
+	// Detect bugfix commits and apply counts
+	bugPatterns := c.StringSlice("bug-patterns")
+	if len(bugPatterns) == 0 {
+		bugPatterns = ctx.Config.Bugfix.Patterns
+	}
+	if len(bugPatterns) > 0 {
+		detector, err := bugfix.NewDetector(bugPatterns)
+		if err != nil {
+			return fmt.Errorf("invalid bug pattern: %w", err)
+		}
+		result := detector.Detect(ctx.ChangeSets)
+		aggregation.ApplyBugfixCounts(metrics, aggregator, result.FileBugfixCounts)
+	}
+
 	// Calculate burst scores
 	burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
 	burstCalc.Compute(metrics)
@@ -70,6 +99,18 @@ func analyzeAction(c *cli.Context) error {
 	explain := c.Bool("explain")
 	scorer := scoring.NewFileScorer(ctx.Config.Scoring)
 	items := scorer.ScoreAndRank(metrics, explain, ctx.Until)
+
+	// Filter by diff if specified
+	if diffSpec := c.String("diff"); diffSpec != "" {
+		diffResult, err := git.ReadDiff(context.Background(), git.DiffOptions{
+			RepoPath: ctx.RepoPath,
+			DiffSpec: diffSpec,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to read diff: %w", err)
+		}
+		items = filterByDiff(items, diffResult)
+	}
 
 	// Create report
 	report := &output.FileAnalysisReport{
@@ -88,5 +129,33 @@ func analyzeAction(c *cli.Context) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "\nCompleted in %s\n", time.Since(start))
+
+	// Check CI threshold
+	if threshold := c.Float64("ci-threshold"); threshold > 0 && len(items) > 0 {
+		if items[0].RiskScore >= threshold {
+			return fmt.Errorf("risk threshold exceeded: %s has score %.4f (threshold: %.4f)",
+				items[0].Path, items[0].RiskScore, threshold)
+		}
+	}
+
 	return nil
+}
+
+// filterByDiff filters scored items to only include files present in the diff result.
+func filterByDiff(items []scoring.FileRiskItem, diff *git.DiffResult) []scoring.FileRiskItem {
+	pathSet := make(map[string]struct{}, len(diff.ChangedFiles))
+	for _, f := range diff.ChangedFiles {
+		pathSet[f.Path] = struct{}{}
+		if f.OldPath != "" {
+			pathSet[f.OldPath] = struct{}{}
+		}
+	}
+
+	filtered := make([]scoring.FileRiskItem, 0, len(pathSet))
+	for _, item := range items {
+		if _, ok := pathSet[item.Path]; ok {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }

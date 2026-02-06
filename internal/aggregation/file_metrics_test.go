@@ -354,6 +354,82 @@ func TestFileMetricsAggregator_Process_Renames(t *testing.T) {
 	}
 }
 
+func TestApplyBugfixCounts(t *testing.T) {
+	agg := NewFileMetricsAggregator()
+	changeSets := []git.CommitChangeSet{
+		{
+			Commit: git.CommitInfo{
+				SHA:     "abc123",
+				When:    time.Now(),
+				Author:  git.AuthorInfo{Name: "Alice", Email: "alice@example.com"},
+				Message: "first",
+			},
+			Changes: []git.FileChange{
+				{Path: "auth/login.go", Kind: git.ChangeKindModified, LinesAdded: 10, LinesDeleted: 5},
+				{Path: "user/profile.go", Kind: git.ChangeKindModified, LinesAdded: 3, LinesDeleted: 1},
+			},
+		},
+	}
+	metrics := agg.Process(changeSets)
+
+	bugfixCounts := map[string]int{
+		"auth/login.go":   3,
+		"user/profile.go": 1,
+		"unknown/file.go": 2, // not in metrics, should be ignored
+	}
+
+	ApplyBugfixCounts(metrics, agg, bugfixCounts)
+
+	if metrics["auth/login.go"].BugfixCount != 3 {
+		t.Errorf("auth/login.go BugfixCount = %d, want 3", metrics["auth/login.go"].BugfixCount)
+	}
+	if metrics["user/profile.go"].BugfixCount != 1 {
+		t.Errorf("user/profile.go BugfixCount = %d, want 1", metrics["user/profile.go"].BugfixCount)
+	}
+}
+
+func TestApplyBugfixCounts_WithRenames(t *testing.T) {
+	agg := NewFileMetricsAggregator()
+	changeSets := []git.CommitChangeSet{
+		{
+			Commit: git.CommitInfo{
+				SHA:     "def456",
+				When:    time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
+				Author:  git.AuthorInfo{Name: "Bob", Email: "bob@example.com"},
+				Message: "rename",
+			},
+			Changes: []git.FileChange{
+				{Path: "new.go", OldPath: "old.go", Kind: git.ChangeKindRenamed, LinesAdded: 2, LinesDeleted: 1},
+			},
+		},
+	}
+	metrics := agg.Process(changeSets)
+
+	// Bugfix count references old path, should resolve to new.go via alias
+	bugfixCounts := map[string]int{
+		"old.go": 5,
+	}
+	ApplyBugfixCounts(metrics, agg, bugfixCounts)
+
+	if metrics["new.go"].BugfixCount != 5 {
+		t.Errorf("new.go BugfixCount = %d, want 5 (via rename alias)", metrics["new.go"].BugfixCount)
+	}
+}
+
+func TestMergeMetrics_BugfixCount(t *testing.T) {
+	agg := NewFileMetricsAggregator()
+	target := NewFileMetrics("target.go")
+	target.BugfixCount = 3
+	source := NewFileMetrics("source.go")
+	source.BugfixCount = 2
+
+	agg.mergeMetrics(target, source)
+
+	if target.BugfixCount != 5 {
+		t.Errorf("BugfixCount after merge = %d, want 5", target.BugfixCount)
+	}
+}
+
 func TestFileMetricsAggregator_Process_Renames_ReverseOrder(t *testing.T) {
 	agg := NewFileMetricsAggregator()
 

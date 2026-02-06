@@ -40,20 +40,26 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Scoring.HalfLifeDays != 30 {
 		t.Errorf("HalfLifeDays = %d, expected 30", cfg.Scoring.HalfLifeDays)
 	}
-	if cfg.Scoring.Weights.Commit != 0.30 {
-		t.Errorf("Weights.Commit = %f, expected 0.30", cfg.Scoring.Weights.Commit)
+	if cfg.Scoring.Weights.Commit != 0.25 {
+		t.Errorf("Weights.Commit = %f, expected 0.25", cfg.Scoring.Weights.Commit)
 	}
-	if cfg.Scoring.Weights.Churn != 0.25 {
-		t.Errorf("Weights.Churn = %f, expected 0.25", cfg.Scoring.Weights.Churn)
+	if cfg.Scoring.Weights.Churn != 0.20 {
+		t.Errorf("Weights.Churn = %f, expected 0.20", cfg.Scoring.Weights.Churn)
 	}
-	if cfg.Scoring.Weights.Recency != 0.20 {
-		t.Errorf("Weights.Recency = %f, expected 0.20", cfg.Scoring.Weights.Recency)
+	if cfg.Scoring.Weights.Recency != 0.15 {
+		t.Errorf("Weights.Recency = %f, expected 0.15", cfg.Scoring.Weights.Recency)
 	}
-	if cfg.Scoring.Weights.Burst != 0.15 {
-		t.Errorf("Weights.Burst = %f, expected 0.15", cfg.Scoring.Weights.Burst)
+	if cfg.Scoring.Weights.Burst != 0.10 {
+		t.Errorf("Weights.Burst = %f, expected 0.10", cfg.Scoring.Weights.Burst)
 	}
 	if cfg.Scoring.Weights.Ownership != 0.10 {
 		t.Errorf("Weights.Ownership = %f, expected 0.10", cfg.Scoring.Weights.Ownership)
+	}
+	if cfg.Scoring.Weights.Bugfix != 0.20 {
+		t.Errorf("Weights.Bugfix = %f, expected 0.20", cfg.Scoring.Weights.Bugfix)
+	}
+	if len(cfg.Bugfix.Patterns) != 4 {
+		t.Errorf("Bugfix.Patterns length = %d, expected 4", len(cfg.Bugfix.Patterns))
 	}
 	if cfg.Burst.WindowDays != 7 {
 		t.Errorf("Burst.WindowDays = %d, expected 7", cfg.Burst.WindowDays)
@@ -98,7 +104,8 @@ func TestDefaultConfig_WeightsSum(t *testing.T) {
 		cfg.Scoring.Weights.Churn +
 		cfg.Scoring.Weights.Recency +
 		cfg.Scoring.Weights.Burst +
-		cfg.Scoring.Weights.Ownership
+		cfg.Scoring.Weights.Ownership +
+		cfg.Scoring.Weights.Bugfix
 
 	if math.Abs(fileWeightsSum-1.0) > 0.001 {
 		t.Errorf("File scoring weights sum = %f, expected 1.0", fileWeightsSum)
