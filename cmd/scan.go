@@ -14,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/masmgr/bugspots-go/config"
+	gitpkg "github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/scoring"
 	"github.com/urfave/cli/v2"
 )
@@ -148,7 +149,7 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 	}
 
 	// Get fixes
-	fixes, err := getFixes(cIter, regex)
+	fixes, err := getFixes(cIter, regex, cfg.Filters.Include, cfg.Filters.Exclude)
 	if err != nil {
 		return fmt.Errorf("failed to get fixes: %w", err)
 	}
@@ -206,7 +207,7 @@ func resolveFromHash(repo *git.Repository, branch string) (plumbing.Hash, error)
 	return plumbing.ZeroHash, fmt.Errorf("branch/ref not found: %q", branch)
 }
 
-func getFixes(cIter object.CommitIter, regex *regexp.Regexp) ([]scoring.LegacyFix, error) {
+func getFixes(cIter object.CommitIter, regex *regexp.Regexp, include, exclude []string) ([]scoring.LegacyFix, error) {
 	var fixes []scoring.LegacyFix
 
 	err := cIter.ForEach(func(c *object.Commit) error {
@@ -255,11 +256,28 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) ([]scoring.LegacyFi
 
 		files := make([]string, 0, len(changes))
 		for _, change := range changes {
-			if change.From.Name != "" {
-				files = append(files, change.From.Name)
-			} else {
-				files = append(files, change.To.Name)
+			path := change.To.Name
+			if path == "" {
+				path = change.From.Name
 			}
+			if path == "" {
+				continue
+			}
+
+			// Apply glob filters (consistent with the modern reader)
+			matched, err := gitpkg.MatchesGlobFilters(strings.ReplaceAll(path, "\\", "/"), include, exclude)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				continue
+			}
+
+			files = append(files, path)
+		}
+
+		if len(files) == 0 {
+			return nil
 		}
 
 		// Extract first line of commit message efficiently

@@ -394,37 +394,45 @@ func (r *HistoryReader) matchesFilters(path string) (bool, error) {
 		return result, nil
 	}
 
+	result, err := MatchesGlobFilters(path, r.opts.Include, r.opts.Exclude)
+	if err != nil {
+		return false, err
+	}
+	r.filterCache[path] = result
+	return result, nil
+}
+
+// MatchesGlobFilters checks if a path matches the given include/exclude glob patterns.
+// If include is empty, all non-excluded paths match.
+// The path should already be normalized (forward slashes).
+func MatchesGlobFilters(path string, include, exclude []string) (bool, error) {
 	// Check exclude patterns first
-	for _, pattern := range r.opts.Exclude {
+	for _, pattern := range exclude {
 		matched, err := doublestar.Match(pattern, path)
 		if err != nil {
 			return false, fmt.Errorf("invalid exclude glob pattern %q: %w", pattern, err)
 		}
 		if matched {
-			r.filterCache[path] = false
 			return false, nil
 		}
 	}
 
 	// If no include patterns, accept all
-	if len(r.opts.Include) == 0 {
-		r.filterCache[path] = true
+	if len(include) == 0 {
 		return true, nil
 	}
 
 	// Check include patterns
-	for _, pattern := range r.opts.Include {
+	for _, pattern := range include {
 		matched, err := doublestar.Match(pattern, path)
 		if err != nil {
 			return false, fmt.Errorf("invalid include glob pattern %q: %w", pattern, err)
 		}
 		if matched {
-			r.filterCache[path] = true
 			return true, nil
 		}
 	}
 
-	r.filterCache[path] = false
 	return false, nil
 }
 
