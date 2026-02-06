@@ -2,7 +2,16 @@
 
 ## 概要
 
-本ドキュメントは、後続研究（ホットスポット／プロセスメトリクス／JIT欠陥予測）に基づき、bugspots-go ツールの機能ロードマップを定義する。
+本ドキュメントは、bugspots-go ツールの機能ロードマップを定義する。
+
+## 現状の課題
+
+現在のスコアリングは「変更が多い＝リスクが高い」という仮定に基づいている。この方式には以下の限界がある：
+
+1. **活発に開発中のファイルが常に上位に来る** - 単なる「よく変わるファイル一覧」になりがち
+2. **過去のバグとの相関がない** - 実際にバグが発生したファイルとの関連性が考慮されていない
+3. **CI連携での実用性が低い** - PR単位での差分分析ができない
+4. **重みの根拠が不明確** - ユーザーが適切な重みを判断できない
 
 ## 実装済み機能
 
@@ -153,9 +162,197 @@ config/
 
 ## 未実装機能
 
-## 優先度C：JIT拡張機能
+## 優先度A（高）：精度と実用性の根本改善
 
-### C1. JIT経験メトリクス拡張
+### A1. バグ修正コミットとの相関を組み込む
+
+**目的**: 過去のバグ修正コミットを特定し、それと相関の高いファイルにスコアを寄せる
+
+**現状の問題**:
+現在のスコアは「変更が多い＝リスクが高い」という仮定だけで動いている。これだと活発に開発中のファイルが常に上位に来て、ノイズが大きい。
+
+**実装内容**:
+- コミットメッセージからバグ修正パターンを正規表現で抽出
+- 「そのファイルが過去にバグ修正された回数」を独立したメトリクスとして追加
+- これは元の bugspots アルゴリズムの本質でもある
+
+**設定例**:
+```json
+{
+  "bugPatterns": [
+    "\\bfix(ed|es)?\\b",
+    "\\bbug\\b",
+    "\\bhotfix\\b",
+    "\\bpatch\\b",
+    "#\\d+",
+    "[A-Z]+-\\d+"
+  ]
+}
+```
+
+**CLI オプション**:
+```bash
+--bug-patterns <REGEX>   バグ修正を示すコミットメッセージパターン
+```
+
+**実装予定ファイル**:
+- `internal/bugfix/detector.go` - バグ修正コミット検出
+- `internal/aggregation/file_metrics.go` - BugfixCount メトリクス追加
+- `internal/scoring/file_scorer.go` - Bugfix コンポーネント追加
+- `config/config.go` - BugPatterns 設定追加
+
+---
+
+### A2. 差分モード（PR/ブランチ単位の分析）
+
+**目的**: CI連携でPR単位の分析を可能にする
+
+**現状の問題**:
+全ファイルを分析するため、CI連携では「今回変更されたファイルの中でリスクが高いものはどれか」を知ることができない。
+
+**実装内容**:
+- 2つのコミット/ブランチ間の差分ファイルのみを対象に分析
+- 変更されたファイルのリスクスコアを返す
+- PR レビューの優先順位付けに直結
+
+**CLI オプション**:
+```bash
+./bugspots-go analyze --diff origin/main...HEAD
+./bugspots-go analyze --diff abc123..def456
+```
+
+**出力例**:
+```json
+{
+  "base": "origin/main",
+  "head": "HEAD",
+  "changedFiles": 5,
+  "highRiskFiles": [
+    {
+      "path": "src/auth/login.go",
+      "riskScore": 0.82,
+      "changeType": "modified"
+    }
+  ]
+}
+```
+
+**CI連携例**:
+```yaml
+- name: Check PR Risk
+  run: |
+    ./bugspots-go analyze --diff origin/main...HEAD --format json --output pr-risk.json
+    # 高リスクファイルがあれば警告
+```
+
+**実装予定ファイル**:
+- `internal/git/diff.go` - 差分ファイル取得
+- `cmd/analyze.go` - `--diff` オプション追加
+- `internal/output/` - 差分モード用出力
+
+---
+
+## 優先度B（中）：精度向上
+
+### B1. ファイル複雑度メトリクスの追加
+
+**目的**: 変更パターンだけでなく、コード自体の特性を見る
+
+**根拠**:
+ファイルサイズ（行数）は最も単純で効果的な複雑度の代理指標。大きいファイルほどバグが潜む確率が高いのは実証研究でも裏付けられている。
+
+**実装内容**:
+- ファイル行数を取得し、メトリクスに追加
+- 将来的には外部ツール連携（サイクロマティック複雑度）も検討
+
+**CLI オプション**:
+```bash
+--include-complexity   ファイル複雑度をスコアに含める
+```
+
+**実装予定ファイル**:
+- `internal/complexity/analyzer.go` - ファイル複雑度計算
+- `internal/aggregation/file_metrics.go` - FileSize, Complexity メトリクス追加
+- `internal/scoring/file_scorer.go` - Complexity コンポーネント追加
+
+---
+
+### B2. スコアキャリブレーション
+
+**目的**: ユーザーが適切な重みを判断できるようにする
+
+**現状の問題**:
+重みは固定のデフォルト値で、ユーザーが適切な重みを判断できない。
+
+**実装内容**:
+1. **実績ベースのキャリブレーション**: 過去のバグ修正コミット（A1で検出）を「正解データ」として、各メトリクスの重みを最適化（単純な線形回帰）
+2. **検出率表示**: `--calibrate` オプションで「この重みでの過去のバグ修正ファイルの検出率（再現率）」を表示
+
+**CLI オプション**:
+```bash
+./bugspots-go calibrate --repo /path/to/repo --since 2024-01-01
+```
+
+**出力例**:
+```
+Calibration Results (based on 150 bug-fix commits):
+
+Current weights detection rate: 65%
+
+Recommended weights:
+  commit:    0.20 (current: 0.30)
+  churn:     0.30 (current: 0.25)  ← このリポジトリでは churn の相関が強い
+  recency:   0.15 (current: 0.20)
+  burst:     0.20 (current: 0.15)
+  ownership: 0.05 (current: 0.10)
+  bugfix:    0.10 (new)
+
+Expected detection rate with recommended weights: 78%
+```
+
+**実装予定ファイル**:
+- `internal/calibration/optimizer.go` - 重み最適化
+- `cmd/calibrate.go` - calibrate コマンド
+
+---
+
+## 優先度C（低）：運用改善
+
+### C1. トレンド分析
+
+**目的**: スコアの時系列変化を追跡する
+
+**根拠**:
+「先月からスコアが急上昇しているファイル」は、「元からスコアが高いが安定しているファイル」より優先してレビューすべき。
+
+**実装内容**:
+- 2時点の分析結果を比較
+- スコア上昇率でソート
+
+**CLI オプション**:
+```bash
+./bugspots-go analyze --compare-with previous-report.json
+```
+
+**出力例**:
+```
+Trend Analysis (compared to 2025-01-01):
+
+Rising Risk Files:
+  src/auth/login.go      0.45 → 0.82 (+82%)
+  src/api/handler.go     0.30 → 0.55 (+83%)
+
+Declining Risk Files:
+  src/core/engine.go     0.75 → 0.60 (-20%)
+```
+
+**実装予定ファイル**:
+- `internal/trend/analyzer.go` - トレンド分析
+- `cmd/analyze.go` - `--compare-with` オプション追加
+
+---
+
+### C2. JIT経験メトリクス拡張
 
 **目的**: 既存の `commits` コマンドに経験ベースのメトリクスを追加
 
@@ -175,50 +372,7 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-### C2. AI レビュー向け危険理由出力
-
-**目的**: LLMベースのコードレビューに渡すための構造化データ生成
-
-**出力形式**:
-```json
-{
-  "analysisContext": {
-    "commit": "abc123",
-    "author": "developer@example.com",
-    "timestamp": "2025-01-15T10:30:00Z"
-  },
-  "riskFactors": [
-    {
-      "factor": "HIGH_DIFFUSION",
-      "severity": "HIGH",
-      "description": "変更が複数サブシステムに跨がる",
-      "value": 0.85,
-      "threshold": 0.6
-    },
-    {
-      "factor": "LOW_EXPERIENCE",
-      "severity": "MEDIUM",
-      "description": "変更者の該当ファイル経験が少ない",
-      "value": 0.23,
-      "threshold": 0.4
-    }
-  ],
-  "reviewGuidance": {
-    "focusAreas": ["認証ロジックの変更", "APIエンドポイントの整合性"],
-    "suggestedReviewers": ["senior-dev@example.com"]
-  }
-}
-```
-
-**実装予定ファイル**:
-- `internal/output/ai_review.go` - AI レビュー向け出力
-- `cmd/analyze.go` - `--format ai-review` オプション追加
-
----
-
-## 優先度D：分析精度向上機能
-
-### D1. 重複変更（Duplicate Changes）除去
+### C3. 重複変更（Duplicate Changes）除去
 
 **目的**: 自動整形やボイラープレート変更によるノイズを除去
 
@@ -239,7 +393,7 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-### D2. リネーム追跡の強化
+### C4. リネーム追跡の強化
 
 **目的**: ファイル名変更を追跡し、同一ファイルとして扱う
 
@@ -259,9 +413,9 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-## 優先度E：パフォーマンス最適化
+## 優先度D：パフォーマンス最適化
 
-### E1. インクリメンタル分析
+### D1. インクリメンタル分析
 
 **目的**: 大規模リポジトリでの分析時間短縮
 
@@ -277,7 +431,7 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 --refresh            キャッシュを無効化して再分析
 ```
 
-### E2. 並列処理
+### D2. 並列処理
 
 **目的**: マルチコアを活用した分析高速化
 
@@ -296,14 +450,22 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
   "scoring": {
     "halfLifeDays": 30,
     "weights": {
-      "commit": 0.25,
+      "commit": 0.20,
       "churn": 0.20,
       "recency": 0.15,
       "burst": 0.15,
       "ownership": 0.10,
-      "entropy": 0.15
+      "bugfix": 0.20
     }
   },
+  "bugPatterns": [
+    "\\bfix(ed|es)?\\b",
+    "\\bbug\\b",
+    "\\bhotfix\\b",
+    "\\bpatch\\b",
+    "#\\d+",
+    "[A-Z]+-\\d+"
+  ],
   "burst": {
     "windowDays": 7
   },
@@ -326,6 +488,10 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
     "minJaccardThreshold": 0.1,
     "maxFilesPerCommit": 50,
     "topPairs": 50
+  },
+  "complexity": {
+    "enabled": false,
+    "weight": 0.10
   },
   "filters": {
     "include": ["src/**", "apps/**"],
@@ -393,6 +559,23 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
+## 優先度まとめ
+
+| 優先度 | 機能 | 理由 |
+|--------|------|------|
+| **A（高）** | バグ修正コミットの相関 | 精度への直接的インパクトが最大。これがないと「よく変わるファイル一覧」でしかない |
+| **A（高）** | 差分モード | CI連携の実用性が劇的に変わる |
+| **B（中）** | ファイル複雑度 | 実装コストが低い割に精度が上がる |
+| **B（中）** | スコアキャリブレーション | バグ修正相関の実装後にやるとさらに効果的 |
+| **C（低）** | トレンド分析 | 運用が定着してからで良い |
+| **C（低）** | JIT経験メトリクス | 有用だが実装コストが高め |
+| **C（低）** | 重複変更除去 | ノイズ対策として有用 |
+| **D** | パフォーマンス最適化 | 大規模リポジトリ対応時 |
+
+**推奨**: A1（バグ修正相関）と A2（差分モード）を先に実装すれば、ツールの価値が根本的に変わる。
+
+---
+
 ## 実装フェーズ
 
 ### ✅ Phase 1: 基盤移植（完了）
@@ -414,18 +597,23 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 2. ✅ coupling コマンド（`cmd/coupling.go`）
 3. ✅ 出力形式（Console, JSON, CSV, Markdown）
 
-### Phase 4: AI連携・重複除去（未実装）
-1. AI連携用JSON出力形式実装
-2. 重複変更検出ロジック実装
-3. `--dedupe` オプション追加
-4. パターンマッチング設定機能
+### Phase 4: 精度と実用性の根本改善（次期優先）
+1. バグ修正コミット検出（`internal/bugfix/detector.go`）
+2. Bugfix メトリクスのスコアリング統合
+3. 差分モード実装（`--diff` オプション）
+4. CI連携用出力形式
 
-### Phase 5: 経験メトリクス・リネーム追跡（未実装）
-1. 経験値計算ロジック実装
-2. リネーム追跡オプション実装
-3. JIT スコアリング拡張
+### Phase 5: 精度向上
+1. ファイル複雑度メトリクス追加
+2. スコアキャリブレーション（`calibrate` コマンド）
+3. トレンド分析（`--compare-with` オプション）
 
-### Phase 6: パフォーマンス最適化（未実装）
+### Phase 6: 運用改善
+1. JIT経験メトリクス拡張
+2. 重複変更検出ロジック
+3. リネーム追跡オプション
+
+### Phase 7: パフォーマンス最適化
 1. インクリメンタル分析（キャッシュ）
 2. 並列処理実装
 3. 大規模リポジトリ対応
