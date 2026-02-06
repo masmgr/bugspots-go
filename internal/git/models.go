@@ -105,4 +105,5 @@ type ReadOptions struct {
 	Exclude      []string // Glob patterns to exclude
 	DetailLevel  ChangeDetailLevel
 	RenameDetect RenameDetectMode
+	OnProgress   func(processed int) // Called after each commit is processed (optional)
 }

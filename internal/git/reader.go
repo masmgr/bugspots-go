@@ -57,6 +57,7 @@ func (r *HistoryReader) ReadChanges(ctx context.Context) ([]CommitChangeSet, err
 	defer cIter.Close()
 
 	results := make([]CommitChangeSet, 0, 1000)
+	processed := 0
 
 	err = cIter.ForEach(func(c *object.Commit) error {
 		select {
@@ -101,6 +102,11 @@ func (r *HistoryReader) ReadChanges(ctx context.Context) ([]CommitChangeSet, err
 			Commit:  commitInfo,
 			Changes: changes,
 		})
+
+		processed++
+		if r.opts.OnProgress != nil {
+			r.opts.OnProgress(processed)
+		}
 
 		return nil
 	})
