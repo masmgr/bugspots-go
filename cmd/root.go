@@ -55,6 +55,11 @@ func commonFlags() []cli.Flag {
 			Aliases: []string{"b"},
 			Usage:   "Branch to analyze",
 		},
+		&cli.StringFlag{
+			Name:  "rename-detect",
+			Usage: "Rename detection mode (auto, off, simple, aggressive)",
+			Value: "simple",
+		},
 		&cli.StringSliceFlag{
 			Name:  "include",
 			Usage: "Glob patterns to include (can be specified multiple times)",

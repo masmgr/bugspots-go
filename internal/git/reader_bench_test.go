@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -120,6 +121,35 @@ func BenchmarkHistoryReader_ReadChanges_Full(b *testing.B) {
 	}
 }
 
+func BenchmarkHistoryReader_ReadChanges_Full_GitCLI(b *testing.B) {
+	if _, err := exec.LookPath("git"); err != nil {
+		b.Skip("git not found")
+	}
+
+	repoDir := createBenchRepo(b, 80, 25, 0)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		reader, err := NewHistoryReader(ReadOptions{
+			RepoPath:     repoDir,
+			DetailLevel:  ChangeDetailFull,
+			RenameDetect: RenameDetectSimple,
+			UseGitCLI:    true,
+		})
+		if err != nil {
+			b.Fatalf("NewHistoryReader: %v", err)
+		}
+		changeSets, err := reader.ReadChanges(context.Background())
+		if err != nil {
+			b.Fatalf("ReadChanges: %v", err)
+		}
+		if len(changeSets) == 0 {
+			b.Fatalf("unexpected empty changesets")
+		}
+	}
+}
+
 func BenchmarkHistoryReader_ReadChanges_PathsOnly(b *testing.B) {
 	repoDir := createBenchRepo(b, 80, 25, 0)
 	b.ReportAllocs()
@@ -130,6 +160,59 @@ func BenchmarkHistoryReader_ReadChanges_PathsOnly(b *testing.B) {
 			RepoPath:     repoDir,
 			DetailLevel:  ChangeDetailPathsOnly,
 			RenameDetect: RenameDetectAggressive,
+		})
+		if err != nil {
+			b.Fatalf("NewHistoryReader: %v", err)
+		}
+		changeSets, err := reader.ReadChanges(context.Background())
+		if err != nil {
+			b.Fatalf("ReadChanges: %v", err)
+		}
+		if len(changeSets) == 0 {
+			b.Fatalf("unexpected empty changesets")
+		}
+	}
+}
+
+func BenchmarkHistoryReader_ReadChanges_PathsOnly_GitCLI(b *testing.B) {
+	if _, err := exec.LookPath("git"); err != nil {
+		b.Skip("git not found")
+	}
+
+	repoDir := createBenchRepo(b, 80, 25, 0)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		reader, err := NewHistoryReader(ReadOptions{
+			RepoPath:     repoDir,
+			DetailLevel:  ChangeDetailPathsOnly,
+			RenameDetect: RenameDetectSimple,
+			UseGitCLI:    true,
+		})
+		if err != nil {
+			b.Fatalf("NewHistoryReader: %v", err)
+		}
+		changeSets, err := reader.ReadChanges(context.Background())
+		if err != nil {
+			b.Fatalf("ReadChanges: %v", err)
+		}
+		if len(changeSets) == 0 {
+			b.Fatalf("unexpected empty changesets")
+		}
+	}
+}
+
+func BenchmarkHistoryReader_ReadChanges_PathsOnly_SimpleRename(b *testing.B) {
+	repoDir := createBenchRepo(b, 80, 25, 0)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		reader, err := NewHistoryReader(ReadOptions{
+			RepoPath:     repoDir,
+			DetailLevel:  ChangeDetailPathsOnly,
+			RenameDetect: RenameDetectSimple,
 		})
 		if err != nil {
 			b.Fatalf("NewHistoryReader: %v", err)
@@ -169,6 +252,36 @@ func BenchmarkHistoryReader_ReadChanges_Full_ExcludeLargePath(b *testing.B) {
 	}
 }
 
+func BenchmarkHistoryReader_ReadChanges_Full_ExcludeLargePath_GitCLI(b *testing.B) {
+	if _, err := exec.LookPath("git"); err != nil {
+		b.Skip("git not found")
+	}
+
+	repoDir := createBenchRepo(b, 80, 5, 4000)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		reader, err := NewHistoryReader(ReadOptions{
+			RepoPath:     repoDir,
+			DetailLevel:  ChangeDetailFull,
+			RenameDetect: RenameDetectSimple,
+			Exclude:      []string{"vendor/**"},
+			UseGitCLI:    true,
+		})
+		if err != nil {
+			b.Fatalf("NewHistoryReader: %v", err)
+		}
+		changeSets, err := reader.ReadChanges(context.Background())
+		if err != nil {
+			b.Fatalf("ReadChanges: %v", err)
+		}
+		if len(changeSets) == 0 {
+			b.Fatalf("unexpected empty changesets")
+		}
+	}
+}
+
 func BenchmarkHistoryReader_ReadChanges_Full_IncludeLargePath(b *testing.B) {
 	repoDir := createBenchRepo(b, 80, 5, 4000)
 	b.ReportAllocs()
@@ -179,6 +292,35 @@ func BenchmarkHistoryReader_ReadChanges_Full_IncludeLargePath(b *testing.B) {
 			RepoPath:     repoDir,
 			DetailLevel:  ChangeDetailFull,
 			RenameDetect: RenameDetectAggressive,
+		})
+		if err != nil {
+			b.Fatalf("NewHistoryReader: %v", err)
+		}
+		changeSets, err := reader.ReadChanges(context.Background())
+		if err != nil {
+			b.Fatalf("ReadChanges: %v", err)
+		}
+		if len(changeSets) == 0 {
+			b.Fatalf("unexpected empty changesets")
+		}
+	}
+}
+
+func BenchmarkHistoryReader_ReadChanges_Full_IncludeLargePath_GitCLI(b *testing.B) {
+	if _, err := exec.LookPath("git"); err != nil {
+		b.Skip("git not found")
+	}
+
+	repoDir := createBenchRepo(b, 80, 5, 4000)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		reader, err := NewHistoryReader(ReadOptions{
+			RepoPath:     repoDir,
+			DetailLevel:  ChangeDetailFull,
+			RenameDetect: RenameDetectSimple,
+			UseGitCLI:    true,
 		})
 		if err != nil {
 			b.Fatalf("NewHistoryReader: %v", err)

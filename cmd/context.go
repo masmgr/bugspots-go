@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/masmgr/bugspots-go/config"
@@ -10,6 +11,26 @@ import (
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/urfave/cli/v2"
 )
+
+func parseRenameDetectFlag(s string, detail git.ChangeDetailLevel) (git.RenameDetectMode, error) {
+	normalized := strings.ToLower(strings.TrimSpace(s))
+
+	switch normalized {
+	case "", "auto":
+		// Performance default: exact renames only.
+		// Callers can opt back into similarity-based detection via "aggressive".
+		return git.RenameDetectSimple, nil
+	case "off", "none", "false", "0":
+		return git.RenameDetectOff, nil
+	case "simple", "exact":
+		return git.RenameDetectSimple, nil
+	case "aggressive", "similar", "similarity":
+		return git.RenameDetectAggressive, nil
+	default:
+		_ = detail // reserved for potential future auto-tuning
+		return git.RenameDetectAggressive, fmt.Errorf("invalid --rename-detect %q (expected auto|off|simple|aggressive)", s)
+	}
+}
 
 // CommandContext holds common state for command execution.
 // It encapsulates the shared setup logic across all analysis commands.
@@ -56,14 +77,21 @@ func NewCommandContextWithGitDetail(c *cli.Context, detail git.ChangeDetailLevel
 	repoPath := c.String("repo")
 	branch := c.String("branch")
 
+	renameDetect, err := parseRenameDetectFlag(c.String("rename-detect"), detail)
+	if err != nil {
+		return nil, err
+	}
+
 	reader, err := git.NewHistoryReader(git.ReadOptions{
-		RepoPath:    repoPath,
-		Branch:      branch,
-		Since:       since,
-		Until:       until,
-		Include:     cfg.Filters.Include,
-		Exclude:     cfg.Filters.Exclude,
-		DetailLevel: detail,
+		RepoPath:     repoPath,
+		Branch:       branch,
+		Since:        since,
+		Until:        until,
+		Include:      cfg.Filters.Include,
+		Exclude:      cfg.Filters.Exclude,
+		DetailLevel:  detail,
+		RenameDetect: renameDetect,
+		UseGitCLI:    true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open repository: %w", err)

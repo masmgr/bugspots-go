@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -16,9 +17,10 @@ import (
 
 // HistoryReader reads commit history from a Git repository.
 type HistoryReader struct {
-	repo        *git.Repository
-	opts        ReadOptions
-	filterCache map[string]bool // Cache for pattern matching results
+	repo         *git.Repository
+	opts         ReadOptions
+	filterCache  map[string]bool // Cache for pattern matching results
+	diffTreeOpts *object.DiffTreeOptions
 
 	// One-entry tree cache: in linear history the parent tree of commit N
 	// is the current tree of commit N-1, so we can avoid re-decoding it.
@@ -32,16 +34,27 @@ func NewHistoryReader(opts ReadOptions) (*HistoryReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &HistoryReader{
+	r := &HistoryReader{
 		repo:        repo,
 		opts:        opts,
 		filterCache: make(map[string]bool),
-	}, nil
+	}
+	r.diffTreeOpts = r.diffTreeOptions()
+	return r, nil
 }
 
 // ReadChanges reads commit changes from the repository.
 // The provided context controls cancellation of the operation.
 func (r *HistoryReader) ReadChanges(ctx context.Context) ([]CommitChangeSet, error) {
+	if r.opts.UseGitCLI {
+		if _, err := exec.LookPath("git"); err == nil {
+			return r.readChangesGitCLI(ctx)
+		}
+	}
+	return r.readChangesGoGit(ctx)
+}
+
+func (r *HistoryReader) readChangesGoGit(ctx context.Context) ([]CommitChangeSet, error) {
 	fromHash, err := r.resolveFromHash()
 	if err != nil {
 		return nil, err
@@ -237,7 +250,7 @@ func (r *HistoryReader) getCommitChanges(ctx context.Context, c *object.Commit) 
 	r.lastTreeHash = c.TreeHash
 	r.lastTree = tree
 
-	changes, err := object.DiffTreeWithOptions(ctx, parentTree, tree, r.diffTreeOptions())
+	changes, err := object.DiffTreeWithOptions(ctx, parentTree, tree, r.diffTreeOpts)
 	if err != nil {
 		return nil, err
 	}
