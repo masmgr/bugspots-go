@@ -160,7 +160,7 @@ go build -o bugspots-go .
 | `--since <DATE>` | | Start date for analysis (YYYY-MM-DD) | All history |
 | `--until <DATE>` | | End date for analysis | Now |
 | `--branch <NAME>` | `-b` | Branch to analyze | HEAD |
-| `--top <N>` | `-n` | Number of top results | 20 |
+| `--top <N>` | `-n` | Number of top results | 50 |
 | `--format <FORMAT>` | `-f` | Output format: console, json, csv, markdown | console |
 | `--output <PATH>` | `-o` | Output file path | stdout |
 | `--explain` | `-e` | Include score breakdown | false |

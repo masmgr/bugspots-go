@@ -353,3 +353,54 @@ func TestFileMetricsAggregator_Process_Renames(t *testing.T) {
 		t.Errorf("new.go CommitCount = %d, expected 2 (merged)", newMetrics.CommitCount)
 	}
 }
+
+func TestFileMetricsAggregator_Process_Renames_ReverseOrder(t *testing.T) {
+	agg := NewFileMetricsAggregator()
+
+	// Simulate history being processed newest-first (rename first, then older old-path changes).
+	changeSets := []git.CommitChangeSet{
+		{
+			Commit: git.CommitInfo{
+				SHA:     "def456",
+				When:    time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
+				Author:  git.AuthorInfo{Name: "Bob", Email: "bob@example.com"},
+				Message: "rename",
+			},
+			Changes: []git.FileChange{
+				{Path: "new.go", OldPath: "old.go", Kind: git.ChangeKindRenamed, LinesAdded: 2, LinesDeleted: 1},
+			},
+		},
+		{
+			Commit: git.CommitInfo{
+				SHA:     "abc123",
+				When:    time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				Author:  git.AuthorInfo{Name: "Alice", Email: "alice@example.com"},
+				Message: "older change",
+			},
+			Changes: []git.FileChange{
+				{Path: "old.go", Kind: git.ChangeKindModified, LinesAdded: 10, LinesDeleted: 5},
+			},
+		},
+	}
+
+	metrics := agg.Process(changeSets)
+
+	if _, exists := metrics["old.go"]; exists {
+		t.Error("Old path should not appear in metrics after rename aliasing")
+	}
+
+	newMetrics := metrics["new.go"]
+	if newMetrics == nil {
+		t.Fatal("new.go not found in metrics after reverse-order rename")
+	}
+
+	if newMetrics.CommitCount != 2 {
+		t.Errorf("new.go CommitCount = %d, expected 2 (merged)", newMetrics.CommitCount)
+	}
+	if newMetrics.AddedLines != 12 {
+		t.Errorf("new.go AddedLines = %d, expected 12 (merged)", newMetrics.AddedLines)
+	}
+	if newMetrics.DeletedLines != 6 {
+		t.Errorf("new.go DeletedLines = %d, expected 6 (merged)", newMetrics.DeletedLines)
+	}
+}

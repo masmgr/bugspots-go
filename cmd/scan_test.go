@@ -28,8 +28,8 @@ func TestConvertToRegex(t *testing.T) {
 			expected: "fix|close|resolve|closes",
 		},
 		{
-			name:     "Words with spaces (trimmed or not)",
-			input:    "fixed,resolved",
+			name:     "Words with spaces are trimmed",
+			input:    "fixed, resolved",
 			expected: "fixed|resolved",
 		},
 		{
@@ -130,17 +130,17 @@ func TestConvertToRegex_EdgeCases(t *testing.T) {
 		{
 			name:     "Trailing comma",
 			input:    "fix,close,",
-			expected: "fix|close|",
+			expected: "fix|close",
 		},
 		{
 			name:     "Leading comma",
 			input:    ",fix,close",
-			expected: "|fix|close",
+			expected: "fix|close",
 		},
 		{
 			name:     "Multiple consecutive commas",
 			input:    "fix,,close",
-			expected: "fix||close",
+			expected: "fix|close",
 		},
 	}
 

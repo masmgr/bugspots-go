@@ -84,10 +84,6 @@ func commonFlags() []cli.Flag {
 			Name:  "explain",
 			Usage: "Show score breakdown",
 		},
-		&cli.StringFlag{
-			Name:  "config",
-			Usage: "Path to configuration file",
-		},
 	}
 }
 

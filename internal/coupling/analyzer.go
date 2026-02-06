@@ -60,12 +60,9 @@ func (a *Analyzer) Analyze(changeSets []git.CommitChangeSet) CouplingAnalysisRes
 	totalCommits := 0
 
 	for _, changeSet := range changeSets {
-		totalCommits++
-
 		// Get unique file paths from this commit (excluding deleted files)
 		seenFiles := make(map[string]struct{})
-		var filesForPairs []string
-		uniqueFileCount := 0
+		filesForPairs := make([]string, 0, len(changeSet.Changes))
 
 		for _, change := range changeSet.Changes {
 			if change.Kind == git.ChangeKindDeleted {
@@ -78,19 +75,21 @@ func (a *Analyzer) Analyze(changeSets []git.CommitChangeSet) CouplingAnalysisRes
 			}
 			seenFiles[path] = struct{}{}
 
-			uniqueFileCount++
-			fileCommitCounts[path]++
-
-			// Only keep files for pairs if within limit
-			if uniqueFileCount <= a.options.MaxFilesPerCommit {
-				filesForPairs = append(filesForPairs, path)
-			}
+			filesForPairs = append(filesForPairs, path)
 		}
+
+		uniqueFileCount := len(filesForPairs)
 
 		// Skip commits with too many files (likely refactoring or merge commits)
 		// or with less than 2 files (no pairs possible)
 		if uniqueFileCount < 2 || uniqueFileCount > a.options.MaxFilesPerCommit {
 			continue
+		}
+
+		totalCommits++
+
+		for _, path := range filesForPairs {
+			fileCommitCounts[path]++
 		}
 
 		// Update pair co-commit counts
@@ -99,6 +98,15 @@ func (a *Analyzer) Analyze(changeSets []git.CommitChangeSet) CouplingAnalysisRes
 				pair := NewFilePair(filesForPairs[i], filesForPairs[j])
 				pairCoCommitCounts[pair]++
 			}
+		}
+	}
+
+	if totalCommits == 0 {
+		return CouplingAnalysisResult{
+			Couplings:    nil,
+			TotalCommits: 0,
+			TotalFiles:   0,
+			TotalPairs:   0,
 		}
 	}
 

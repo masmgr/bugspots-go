@@ -94,6 +94,7 @@ func (f *FileMetrics) AddCommit(commit git.CommitInfo, change git.FileChange, co
 type FileMetricsAggregator struct {
 	metrics            map[string]*FileMetrics
 	collectCommitTimes bool // Whether to collect commit times for burst calculation
+	pathAliases        map[string]string
 }
 
 // NewFileMetricsAggregator creates a new aggregator.
@@ -102,6 +103,7 @@ func NewFileMetricsAggregator() *FileMetricsAggregator {
 	return &FileMetricsAggregator{
 		metrics:            make(map[string]*FileMetrics),
 		collectCommitTimes: true,
+		pathAliases:        make(map[string]string),
 	}
 }
 
@@ -110,6 +112,7 @@ func NewFileMetricsAggregatorWithOptions(collectCommitTimes bool) *FileMetricsAg
 	return &FileMetricsAggregator{
 		metrics:            make(map[string]*FileMetrics),
 		collectCommitTimes: collectCommitTimes,
+		pathAliases:        make(map[string]string),
 	}
 }
 
@@ -129,20 +132,14 @@ func (a *FileMetricsAggregator) processChangeSet(cs git.CommitChangeSet) {
 			continue
 		}
 
-		path := change.Path
-
-		// Handle renames: if there was an old path, merge its metrics
+		// Handle renames. Note: commit history is often read newest-first, so we need
+		// to be able to merge even when the rename appears before older changes to the
+		// old path. We do this via aliasing oldPath -> newPath.
 		if change.Kind == git.ChangeKindRenamed && change.OldPath != "" {
-			if oldMetrics, exists := a.metrics[change.OldPath]; exists {
-				// Create or get the new path metrics
-				if _, newExists := a.metrics[path]; !newExists {
-					a.metrics[path] = NewFileMetrics(path)
-				}
-				// Merge old metrics into new
-				a.mergeMetrics(a.metrics[path], oldMetrics)
-				delete(a.metrics, change.OldPath)
-			}
+			a.applyRename(change.OldPath, change.Path)
 		}
+
+		path := a.canonicalPath(change.Path)
 
 		// Get or create metrics for this path
 		if _, exists := a.metrics[path]; !exists {
@@ -150,6 +147,48 @@ func (a *FileMetricsAggregator) processChangeSet(cs git.CommitChangeSet) {
 		}
 
 		a.metrics[path].AddCommit(cs.Commit, change, a.collectCommitTimes)
+	}
+}
+
+func (a *FileMetricsAggregator) canonicalPath(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	// Follow alias chain with a small cap to avoid loops.
+	for i := 0; i < 16; i++ {
+		next, ok := a.pathAliases[path]
+		if !ok || next == "" || next == path {
+			return path
+		}
+		path = next
+	}
+
+	return path
+}
+
+func (a *FileMetricsAggregator) applyRename(oldPath, newPath string) {
+	oldCanon := a.canonicalPath(oldPath)
+	newCanon := a.canonicalPath(newPath)
+	if oldCanon == "" || newCanon == "" || oldCanon == newCanon {
+		return
+	}
+
+	// Ensure the destination exists so future old-path commits have somewhere to land.
+	if _, exists := a.metrics[newCanon]; !exists {
+		a.metrics[newCanon] = NewFileMetrics(newCanon)
+	}
+
+	// Merge any existing old-path metrics.
+	if oldMetrics, exists := a.metrics[oldCanon]; exists {
+		a.mergeMetrics(a.metrics[newCanon], oldMetrics)
+		delete(a.metrics, oldCanon)
+	}
+
+	// Alias old -> new so older commits contribute to the canonical path.
+	a.pathAliases[oldCanon] = newCanon
+	if oldPath != oldCanon {
+		a.pathAliases[oldPath] = newCanon
 	}
 }
 
@@ -172,6 +211,9 @@ func (a *FileMetricsAggregator) mergeMetrics(target, source *FileMetrics) {
 	}
 
 	target.CommitTimes = append(target.CommitTimes, source.CommitTimes...)
+
+	// Invalidate cache due to merged contributor counts / commit count changes.
+	target.cachedOwnershipRatio = nil
 }
 
 // GetMetrics returns the aggregated metrics.

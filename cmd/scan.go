@@ -9,6 +9,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/scoring"
@@ -106,7 +107,16 @@ func buildBugfixRegex(c *cli.Context, cfg *config.Config) (*regexp.Regexp, error
 
 // convertToRegex converts a comma-separated word list to a regex pattern.
 func convertToRegex(words string) string {
-	return strings.Join(strings.Split(words, ","), "|")
+	parts := strings.Split(words, ",")
+	tokens := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		tokens = append(tokens, regexp.QuoteMeta(p))
+	}
+	return strings.Join(tokens, "|")
 }
 
 func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.Config, displayTimestamps bool) error {
@@ -118,10 +128,10 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 		return fmt.Errorf("invalid Git repository - please run from or specify the full path to the root of the project: %w", err)
 	}
 
-	// Get HEAD reference
-	ref, err := r.Head()
+	// Resolve starting reference (branch/ref)
+	fromHash, err := resolveFromHash(r, branch)
 	if err != nil {
-		return fmt.Errorf("failed to get HEAD: %w", err)
+		return err
 	}
 
 	// Calculate time range
@@ -129,7 +139,7 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 	since := until.AddDate(-cfg.Legacy.AnalysisWindowYears, 0, 0)
 
 	// Get commit iterator
-	cIter, err := r.Log(&git.LogOptions{From: ref.Hash(), Since: &since, Until: &until})
+	cIter, err := r.Log(&git.LogOptions{From: fromHash, Since: &since, Until: &until})
 	if err != nil {
 		return fmt.Errorf("failed to get commit log: %w", err)
 	}
@@ -147,6 +157,49 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 	showScanResult(fixes, hotspots, cfg.Legacy.MaxHotspots, displayTimestamps)
 
 	return nil
+}
+
+func resolveFromHash(repo *git.Repository, branch string) (plumbing.Hash, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" || strings.EqualFold(branch, "HEAD") {
+		ref, err := repo.Head()
+		if err != nil {
+			return plumbing.ZeroHash, fmt.Errorf("failed to get HEAD: %w", err)
+		}
+		return ref.Hash(), nil
+	}
+
+	remoteRef := plumbing.ReferenceName("")
+	if !strings.HasPrefix(branch, "refs/") && strings.Contains(branch, "/") {
+		if parts := strings.SplitN(branch, "/", 2); len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			remoteRef = plumbing.NewRemoteReferenceName(parts[0], parts[1])
+		}
+	}
+
+	candidates := []plumbing.ReferenceName{
+		plumbing.ReferenceName(branch),
+		plumbing.NewBranchReferenceName(branch),
+		plumbing.NewRemoteReferenceName("origin", branch),
+		remoteRef,
+		plumbing.NewTagReferenceName(branch),
+	}
+
+	for _, name := range candidates {
+		if name == "" {
+			continue
+		}
+		ref, err := repo.Reference(name, true)
+		if err == nil {
+			return ref.Hash(), nil
+		}
+	}
+
+	h, err := repo.ResolveRevision(plumbing.Revision(branch))
+	if err == nil && h != nil {
+		return *h, nil
+	}
+
+	return plumbing.ZeroHash, fmt.Errorf("branch/ref not found: %q", branch)
 }
 
 func getFixes(cIter object.CommitIter, regex *regexp.Regexp) ([]scoring.LegacyFix, error) {

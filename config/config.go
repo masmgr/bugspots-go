@@ -149,9 +149,11 @@ func LoadConfig(path string) (*Config, error) {
 
 	if path == "" {
 		// Try default locations
-		candidates := []string{
-			".bugspots.json",
-			filepath.Join(os.Getenv("HOME"), ".bugspots.json"),
+		candidates := []string{".bugspots.json"}
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			candidates = append(candidates, filepath.Join(home, ".bugspots.json"))
+		} else if envHome := os.Getenv("HOME"); envHome != "" {
+			candidates = append(candidates, filepath.Join(envHome, ".bugspots.json"))
 		}
 		for _, p := range candidates {
 			if _, err := os.Stat(p); err == nil {

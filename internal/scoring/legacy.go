@@ -18,7 +18,19 @@ import (
 // Formula: 1 / (1 + exp((-12*t)+12))
 // where t is normalized time from 0 to 1
 func LegacySigmoidScore(currentDate time.Time, oldestDate time.Time, fixDate time.Time) float64 {
-	t := 1 - (float64(currentDate.Sub(fixDate).Seconds()) / currentDate.Sub(oldestDate).Seconds())
+	denom := currentDate.Sub(oldestDate).Seconds()
+	if denom <= 0 {
+		// No time range to normalize against; treat all fixes as equally "recent".
+		return 1.0
+	}
+
+	t := 1 - (float64(currentDate.Sub(fixDate).Seconds()) / denom)
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
+	}
+
 	return 1 / (1 + math.Exp((-12*t)+12))
 }
 
