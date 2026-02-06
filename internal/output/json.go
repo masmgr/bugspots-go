@@ -12,32 +12,32 @@ type JSONFileWriter struct{}
 
 // JSONFileReport is the JSON output structure for file analysis.
 type JSONFileReport struct {
-	RepoPath    string            `json:"repo"`
-	Since       *string           `json:"since,omitempty"`
-	Until       string            `json:"until"`
-	GeneratedAt string            `json:"generatedAt"`
-	TotalFiles  int               `json:"totalFiles"`
-	Items       []JSONFileItem    `json:"items"`
+	RepoPath    string         `json:"repo"`
+	Since       *string        `json:"since,omitempty"`
+	Until       string         `json:"until"`
+	GeneratedAt string         `json:"generatedAt"`
+	TotalFiles  int            `json:"totalFiles"`
+	Items       []JSONFileItem `json:"items"`
 }
 
 // JSONFileItem is the JSON output structure for a single file.
 type JSONFileItem struct {
-	Path      string            `json:"path"`
-	RiskScore float64           `json:"riskScore"`
-	Metrics   JSONFileMetrics   `json:"metrics"`
+	Path      string             `json:"path"`
+	RiskScore float64            `json:"riskScore"`
+	Metrics   JSONFileMetrics    `json:"metrics"`
 	Breakdown *JSONFileBreakdown `json:"breakdown,omitempty"`
 }
 
 // JSONFileMetrics holds the metrics for a file in JSON format.
 type JSONFileMetrics struct {
-	CommitCount    int       `json:"commitCount"`
-	ChurnAdded     int       `json:"churnAdded"`
-	ChurnDeleted   int       `json:"churnDeleted"`
-	ChurnTotal     int       `json:"churnTotal"`
-	LastModified   string    `json:"lastModified"`
-	Contributors   int       `json:"contributors"`
-	BurstScore     float64   `json:"burstScore"`
-	OwnershipRatio float64   `json:"ownershipRatio"`
+	CommitCount    int     `json:"commitCount"`
+	ChurnAdded     int     `json:"churnAdded"`
+	ChurnDeleted   int     `json:"churnDeleted"`
+	ChurnTotal     int     `json:"churnTotal"`
+	LastModified   string  `json:"lastModified"`
+	Contributors   int     `json:"contributors"`
+	BurstScore     float64 `json:"burstScore"`
+	OwnershipRatio float64 `json:"ownershipRatio"`
 }
 
 // JSONFileBreakdown holds the score breakdown for a file in JSON format.
@@ -117,13 +117,13 @@ type JSONCommitReport struct {
 
 // JSONCommitItem is the JSON output structure for a single commit.
 type JSONCommitItem struct {
-	SHA       string              `json:"sha"`
-	When      string              `json:"when"`
-	Author    string              `json:"author"`
-	Message   string              `json:"message"`
-	RiskScore float64             `json:"riskScore"`
-	RiskLevel string              `json:"riskLevel"`
-	Metrics   JSONCommitMetrics   `json:"metrics"`
+	SHA       string               `json:"sha"`
+	When      string               `json:"when"`
+	Author    string               `json:"author"`
+	Message   string               `json:"message"`
+	RiskScore float64              `json:"riskScore"`
+	RiskLevel string               `json:"riskLevel"`
+	Metrics   JSONCommitMetrics    `json:"metrics"`
 	Breakdown *JSONCommitBreakdown `json:"breakdown,omitempty"`
 }
 
