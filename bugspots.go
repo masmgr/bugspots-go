@@ -70,7 +70,7 @@ func getFixes(cIter object.CommitIter, regex *regexp.Regexp) []Fix {
 	var fixes []Fix
 
 	err := cIter.ForEach(func(c *object.Commit) error {
-		if regex != nil && len(regex.FindStringSubmatch(c.Message)) > 0 {
+		if regex != nil && len(regex.FindStringSubmatch(c.Message)) == 0 {
 			return nil
 		}
 
