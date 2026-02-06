@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -120,6 +121,7 @@ func convertToRegex(words string) string {
 }
 
 func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.Config, displayTimestamps bool) error {
+	start := time.Now()
 	color.Green("Scanning %v repo", repoPath)
 
 	// Open repository
@@ -156,6 +158,7 @@ func runScan(repoPath string, branch string, regex *regexp.Regexp, cfg *config.C
 	// Display results
 	showScanResult(fixes, hotspots, cfg.Legacy.MaxHotspots, displayTimestamps)
 
+	fmt.Fprintf(os.Stderr, "\nCompleted in %s\n", time.Since(start))
 	return nil
 }
 

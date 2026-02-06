@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/masmgr/bugspots-go/config"
@@ -31,6 +32,8 @@ func CommitsCmd() *cli.Command {
 }
 
 func commitsAction(c *cli.Context) error {
+	start := time.Now()
+
 	// Create command context (handles config, dates, git reader)
 	ctx, err := NewCommandContext(c)
 	if err != nil {
@@ -69,7 +72,12 @@ func commitsAction(c *cli.Context) error {
 	// Output results
 	opts := OutputOptions(c)
 	writer := output.NewCommitReportWriter(opts.Format)
-	return writer.Write(report, opts)
+	if err := writer.Write(report, opts); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(c.App.ErrWriter, "\nCompleted in %s\n", time.Since(start))
+	return nil
 }
 
 func parseRiskLevel(s string) config.RiskLevel {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/coupling"
@@ -44,6 +45,8 @@ func CouplingCmd() *cli.Command {
 }
 
 func couplingAction(c *cli.Context) error {
+	start := time.Now()
+
 	// Create command context (handles config, dates, git reader)
 	ctx, err := NewCommandContextWithGitDetail(c, git.ChangeDetailPathsOnly)
 	if err != nil {
@@ -85,5 +88,10 @@ func couplingAction(c *cli.Context) error {
 	// Output results
 	opts := OutputOptions(c)
 	writer := output.NewCouplingReportWriter(opts.Format)
-	return writer.Write(report, opts)
+	if err := writer.Write(report, opts); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(c.App.ErrWriter, "\nCompleted in %s\n", time.Since(start))
+	return nil
 }
