@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-bugspots-go is a Go implementation of the [Bugspots bug prediction heuristic](http://google-engtools.blogspot.com/2011/12/bug-prediction-at-google.html) originally created by igrigorik. It analyzes Git repositories to identify files most likely to contain bugs based on historical fix commits.
+bugspots-go is a Go implementation of the [Bugspots bug prediction heuristic](http://google-engtools.blogspot.com/2011/12/bug-prediction-at-google.html) originally created by igrigorik. It analyzes Git repositories to identify files most likely to contain bugs based on historical fix commits. Version 2.0 extends the original concept with multi-factor file scoring, JIT commit risk analysis, and file coupling detection.
 
 ## Build and Run Commands
 
@@ -15,25 +15,38 @@ go build -o bugspots-go .
 
 ### Run the tool
 ```bash
+# Subcommand-based usage (v2)
+./bugspots-go <command> [flags]
+
+# Legacy usage (backward compatible)
 ./bugspots-go [flags] /path/to/git/repo
 ```
 
 ### Common usage examples
 ```bash
-# Scan default branch (master) with default bugfix indicators
+# 6-factor file hotspot analysis (recommended)
+./bugspots-go analyze --repo /path/to/repo
+./bugspots-go analyze --repo /path/to/repo --since 2025-01-01
+./bugspots-go analyze --repo /path/to/repo --format json --output report.json
+./bugspots-go analyze --repo /path/to/repo --diff origin/main...HEAD
+
+# JIT commit risk analysis
+./bugspots-go commits --repo /path/to/repo
+./bugspots-go commits --repo /path/to/repo --risk-level high
+
+# File change coupling analysis
+./bugspots-go coupling --repo /path/to/repo
+./bugspots-go coupling --repo /path/to/repo --min-co-commits 5 --min-jaccard 0.3
+
+# Legacy scan mode (original bugspots behavior)
+./bugspots-go scan /path/to/repo
+./bugspots-go scan -b develop /path/to/repo
+./bugspots-go scan -w "fixes,closed,resolved" /path/to/repo
+./bugspots-go scan -r "fix(es|ed)?" /path/to/repo
+./bugspots-go scan --display-timestamps /path/to/repo
+
+# Backward-compatible legacy invocation (no subcommand)
 ./bugspots-go /path/to/repo
-
-# Scan specific branch
-./bugspots-go -b develop /path/to/repo
-
-# Use custom bugfix indicator words
-./bugspots-go -w "fixes,closed,resolved" /path/to/repo
-
-# Use custom regex pattern for bugfix detection
-./bugspots-go -r "fix(es|ed)?" /path/to/repo
-
-# Show timestamps of identified fix commits
-./bugspots-go --display-timestamps /path/to/repo
 ```
 
 ### Run tests
@@ -53,6 +66,9 @@ go tool cover -html=coverage.out
 
 # Run specific test function
 go test -v -run TestCalcScore ./...
+
+# Run benchmarks
+go test -bench=. ./internal/git/
 ```
 
 ### Lint code
@@ -69,71 +85,78 @@ gofmt -l .
 
 ## Architecture
 
-The project has two main components:
+The project uses a modular architecture with four CLI commands backed by internal packages.
 
-### app.go - CLI Entry Point
-- Defines the command-line interface using urfave/cli/v2
-- Parses flags for branch selection, bugfix indicators (words or regex), and display options
-- Converts word-based bugfix indicators into regex patterns
-- Calls the main `Scan()` function with parsed parameters
+### app.go - Entry Point
+- Minimal entry point that delegates to `cmd.App()`
+- Adds legacy scan flags to the root command for backward compatibility
 
-### bugspots.go - Core Algorithm
-The core algorithm works through these key functions:
+### cmd/ - Command Definitions
+Each command is defined in its own file:
 
-1. **Scan()** - Main entry point that:
-   - Opens the Git repository using go-git
-   - Retrieves commit history from the past 3 years (configurable via `since` and `until` variables)
-   - Identifies bugfix commits using the provided regex pattern
-   - Calculates hotspot scores for each modified file
-   - Displays results
+- **root.go** - Defines the CLI app structure with `urfave/cli/v2`, common flags, config loading, output format parsing, and legacy action handler
+- **analyze.go** - `analyze` command: 6-factor file hotspot analysis (commit frequency, churn, recency, burst, ownership, bugfix). Supports `--diff` for PR/CI integration and `--ci-threshold` for automated gating
+- **commits.go** - `commits` command: JIT defect prediction scoring individual commits by diffusion, size, and entropy. Supports `--risk-level` filtering
+- **coupling.go** - `coupling` command: file change coupling analysis using Jaccard coefficient with configurable thresholds
+- **scan.go** - `scan` command: legacy bugspots mode preserving the original CLI interface. Contains `convertToRegex()`, `getFixes()`, and `showScanResult()`
+- **context.go** - `CommandContext` struct encapsulating shared setup logic (config, date parsing, Git reader initialization) used by all commands
 
-2. **getFixes()** - Identifies bugfix commits by:
-   - Filtering commits matching the bugfix regex
-   - Computing diffs between commits and their parents using `object.DiffTree()`
-   - Extracting the list of modified files for each fix commit
-   - Returns a list of Fix structs containing message, date, and affected files
-   - **IMPORTANT**: There is a bug at [bugspots.go:73](bugspots.go#L73) - the regex match logic is inverted (returns early on match instead of non-match)
+### internal/ - Core Packages
 
-3. **CalcScore()** - Weights each bugfix commit by recency using a sigmoid function:
-   - Recent fixes have higher weight (approaching 1)
-   - Older fixes have lower weight (approaching 0)
-   - Provides temporal scoring: newer bugs in a file increase its hotspot score more than older bugs
-   - Normalizes time relative to the analysis date and repository age
-   - Formula: `1 / (1 + exp((-12*t)+12))` where `t` is normalized time from 0 to 1
+- **internal/git/** - Git CLI interface (replaced go-git library). `HistoryReader` reads commit history via `git log` with numstat/raw output. Supports branch selection, date range filtering, rename detection, and file include/exclude glob patterns
+- **internal/bugfix/** - Pattern-based bugfix commit detection using configurable regex patterns
+- **internal/scoring/** - Scoring algorithms:
+  - `legacy.go` - Original sigmoid-based temporal scoring: `1 / (1 + exp((-12*t)+12))`
+  - `file_scorer.go` - 6-factor weighted file risk scoring
+  - `commit_scorer.go` - JIT commit risk scoring (diffusion, size, entropy)
+  - `normalization.go` - Score normalization utilities (min-max, logarithmic, recency decay, clamping)
+- **internal/aggregation/** - Metrics aggregation from commit history:
+  - `file_metrics.go` - Per-file metrics (commit count, churn, contributors, ownership ratio, burst scores)
+  - `commit_metrics.go` - Per-commit metrics (file count, directories, subsystems, total churn)
+- **internal/output/** - Multi-format output writers (console, JSON, CSV, Markdown, CI/NDJSON) for file, commit, and coupling reports
+- **internal/coupling/** - File change coupling analysis using Jaccard coefficient
+- **internal/burst/** - Sliding window burst detection for commit frequency analysis
+- **internal/entropy/** - Shannon entropy calculation for commit change distribution
 
-4. **ShowResult()** - Formats and displays:
-   - All identified bugfix commits sorted by recency
-   - Top 100 hotspot files ranked by cumulative bugfix score
-   - Uses fatih/color for formatted console output
+### config/ - Configuration
+- JSON-based configuration via `.bugspots.json` files (project root or home directory)
+- Configurable scoring weights, bugfix patterns, coupling thresholds, and legacy settings
+- CLI flags override config file values
 
 ## Key Data Structures
 
-- **Fix** - Represents a detected bugfix commit (message, timestamp, list of modified files)
-- **Spot** - Represents a file's bugspot ranking (filename, calculated score)
+- **git.CommitChangeSet** - A commit with its associated file changes (path, lines added/deleted, change kind)
+- **git.FileChange** - Individual file change within a commit (path, old path for renames, added/deleted lines, change kind)
+- **scoring.LegacyFix** - Represents a detected bugfix commit in legacy mode (message, timestamp, list of modified files)
+- **scoring.FileRiskItem** - File risk result with score and optional breakdown
+- **scoring.CommitRiskItem** - Commit risk result with score, risk level, and optional breakdown
+- **aggregation.FileMetrics** - Accumulated per-file metrics across all commits
+- **config.Config** - Root configuration structure with scoring, bugfix, coupling, and filter settings
 
 ## Test Suite
 
-The test suite includes unit tests for core functions and test helpers for integration testing:
+The test suite includes 23 test files across all packages with 90+ test functions and 280+ test cases. See [TESTS.md](TESTS.md) for detailed test documentation.
 
-### Unit Tests
-- `bugspots_test.go` - Tests for CalcScore() and minInt() including edge cases and mathematical properties
-- `app_test.go` - Tests for convertToRegex() including regex validation and matching
+### Key test areas:
+- **cmd/** - `convertToRegex()` conversion and regex validation
+- **config/** - Configuration defaults and risk level classification
+- **internal/git/** - Git CLI output parsing, branch handling, filters, diff parsing, benchmarks
+- **internal/scoring/** - Legacy sigmoid, file scoring, commit scoring, normalization
+- **internal/aggregation/** - File and commit metrics aggregation, rename handling
+- **internal/bugfix/** - Pattern detection and bugfix identification
+- **internal/output/** - Output format writers and helpers
+- **internal/coupling/** - Coupling analysis and Jaccard coefficient
+- **internal/burst/** - Sliding window burst detection
+- **internal/entropy/** - Shannon entropy calculation
 
-### Test Helpers
-- `testhelpers_test.go` - Contains utilities for creating test repositories:
-  - `createTestRepo()` - Creates temporary git repositories
-  - `addCommitToRepo()` - Adds commits with test data
-  - `suppressOutput()` / `discardOutput()` - Suppresses stdout during tests
-  - `configureGitUser()` - Sets up git user configuration
-
-See [TESTS.md](TESTS.md) for detailed test documentation.
+### Root-level test helpers (`testhelpers_test.go`):
+- `createTestRepo()` - Creates temporary git repositories via git CLI
+- `addCommitToRepo()` - Adds commits with custom timestamps
+- `suppressOutput()` / `discardOutput()` - Suppresses stdout during tests
+- `runGit()` - Runs git commands in test directories
 
 ## Dependencies
 
 - `github.com/urfave/cli/v2` - CLI framework
-- `github.com/go-git/go-git/v5` - Git repository interaction
-- `github.com/fatih/color` - Colored output
-
-## Known Issues
-
-- [bugspots.go:73](bugspots.go#L73) - The regex matching logic in getFixes() is inverted, causing incorrect filtering of bugfix commits
+- `github.com/fatih/color` - Colored console output
+- `github.com/bmatcuk/doublestar/v4` - Glob pattern matching for file filters
