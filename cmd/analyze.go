@@ -1,12 +1,10 @@
 package cmd
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/aggregation"
 	"github.com/masmgr/bugspots-go/internal/burst"
-	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/masmgr/bugspots-go/internal/scoring"
 	"github.com/urfave/cli/v2"
@@ -37,89 +35,49 @@ func AnalyzeCmd() *cli.Command {
 }
 
 func analyzeAction(c *cli.Context) error {
-	// Load configuration
-	cfg, err := loadConfig(c)
+	// Create command context (handles config, dates, git reader)
+	ctx, err := NewCommandContext(c)
 	if err != nil {
 		return err
+	}
+
+	if !ctx.HasCommits() {
+		ctx.PrintNoCommitsMessage()
+		return nil
 	}
 
 	// Override config from CLI flags
 	if halfLife := c.Int("half-life"); halfLife > 0 {
-		cfg.Scoring.HalfLifeDays = halfLife
+		ctx.Config.Scoring.HalfLifeDays = halfLife
 	}
 	if windowDays := c.Int("window-days"); windowDays > 0 {
-		cfg.Burst.WindowDays = windowDays
-	}
-
-	// Parse date flags
-	since, err := parseDateFlag(c.String("since"))
-	if err != nil {
-		return err
-	}
-	until, err := parseDateFlag(c.String("until"))
-	if err != nil {
-		return err
-	}
-
-	untilTime := time.Now()
-	if until != nil {
-		untilTime = *until
-	}
-
-	// Set up Git reader
-	repoPath := c.String("repo")
-	reader, err := git.NewHistoryReader(git.ReadOptions{
-		RepoPath: repoPath,
-		Branch:   c.String("branch"),
-		Since:    since,
-		Until:    until,
-		Include:  cfg.Filters.Include,
-		Exclude:  cfg.Filters.Exclude,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to open repository: %w", err)
-	}
-
-	// Read commit changes
-	changeSets, err := reader.ReadChanges()
-	if err != nil {
-		return fmt.Errorf("failed to read history: %w", err)
-	}
-
-	if len(changeSets) == 0 {
-		fmt.Println("No commits found in the specified range.")
-		return nil
+		ctx.Config.Burst.WindowDays = windowDays
 	}
 
 	// Aggregate file metrics
 	aggregator := aggregation.NewFileMetricsAggregator()
-	metrics := aggregator.Process(changeSets)
+	metrics := aggregator.Process(ctx.ChangeSets)
 
 	// Calculate burst scores
-	burstCalc := burst.NewCalculator(cfg.Burst.WindowDays)
+	burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
 	burstCalc.Compute(metrics)
 
 	// Calculate risk scores
 	explain := c.Bool("explain")
-	scorer := scoring.NewFileScorer(cfg.Scoring)
-	items := scorer.ScoreAndRank(metrics, explain, untilTime)
+	scorer := scoring.NewFileScorer(ctx.Config.Scoring)
+	items := scorer.ScoreAndRank(metrics, explain, ctx.Until)
 
 	// Create report
 	report := &output.FileAnalysisReport{
-		RepoPath:    repoPath,
-		Since:       since,
-		Until:       untilTime,
+		RepoPath:    ctx.RepoPath,
+		Since:       ctx.Since,
+		Until:       ctx.Until,
 		GeneratedAt: time.Now(),
 		Items:       items,
 	}
 
 	// Output results
-	format := getOutputFormat(c.String("format"))
-	writer := output.NewFileReportWriter(format)
-	return writer.Write(report, output.OutputOptions{
-		Format:     format,
-		Top:        c.Int("top"),
-		OutputPath: c.String("output"),
-		Explain:    explain,
-	})
+	opts := OutputOptions(c)
+	writer := output.NewFileReportWriter(opts.Format)
+	return writer.Write(report, opts)
 }

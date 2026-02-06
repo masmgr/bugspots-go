@@ -7,6 +7,28 @@ import (
 	"github.com/masmgr/bugspots-go/internal/scoring"
 )
 
+// Compile-time interface conformance checks.
+// These ensure that all writer types correctly implement their respective interfaces.
+var (
+	// FileReportWriter implementations
+	_ FileReportWriter = (*ConsoleFileWriter)(nil)
+	_ FileReportWriter = (*JSONFileWriter)(nil)
+	_ FileReportWriter = (*CSVFileWriter)(nil)
+	_ FileReportWriter = (*MarkdownFileWriter)(nil)
+
+	// CommitReportWriter implementations
+	_ CommitReportWriter = (*ConsoleCommitWriter)(nil)
+	_ CommitReportWriter = (*JSONCommitWriter)(nil)
+	_ CommitReportWriter = (*CSVCommitWriter)(nil)
+	_ CommitReportWriter = (*MarkdownCommitWriter)(nil)
+
+	// CouplingReportWriter implementations
+	_ CouplingReportWriter = (*ConsoleCouplingWriter)(nil)
+	_ CouplingReportWriter = (*JSONCouplingWriter)(nil)
+	_ CouplingReportWriter = (*CSVCouplingWriter)(nil)
+	_ CouplingReportWriter = (*MarkdownCouplingWriter)(nil)
+)
+
 // OutputFormat represents the output format type.
 type OutputFormat string
 

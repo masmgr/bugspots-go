@@ -20,6 +20,7 @@ func App() *cli.App {
 			AnalyzeCmd(),
 			CommitsCmd(),
 			CouplingCmd(),
+			ScanCmd(),
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -136,20 +137,16 @@ func loadConfig(c *cli.Context) (*config.Config, error) {
 }
 
 // legacyAction handles the default (legacy) command behavior.
+// When a repository path is provided as an argument, it runs the scan command.
 func legacyAction(c *cli.Context) error {
 	// If no args and no subcommand, show help
 	if c.NArg() == 0 {
 		return cli.ShowAppHelp(c)
 	}
 
-	// Legacy mode: treat first arg as repo path
+	// Legacy mode: treat first arg as repo path and run scan
 	// This maintains backward compatibility with the original bugspots CLI
-	fmt.Println("Running legacy bugspots analysis...")
-	fmt.Println("Use 'bugspots analyze' for the enhanced analysis with 5-factor scoring.")
-	fmt.Println("Use 'bugspots commits' for JIT commit risk analysis.")
-	fmt.Println("Use 'bugspots coupling' for file coupling analysis.")
-
-	return nil
+	return ScanCmd().Action(c)
 }
 
 // Run executes the CLI application.
