@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	fdiff "github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // HistoryReader reads commit history from a Git repository.
@@ -18,6 +19,11 @@ type HistoryReader struct {
 	repo        *git.Repository
 	opts        ReadOptions
 	filterCache map[string]bool // Cache for pattern matching results
+
+	// One-entry tree cache: in linear history the parent tree of commit N
+	// is the current tree of commit N-1, so we can avoid re-decoding it.
+	lastTreeHash plumbing.Hash
+	lastTree     *object.Tree
 }
 
 // NewHistoryReader creates a new history reader for the given repository.
@@ -41,13 +47,12 @@ func (r *HistoryReader) ReadChanges(ctx context.Context) ([]CommitChangeSet, err
 		return nil, err
 	}
 
-	logOpts := &git.LogOptions{From: fromHash}
-
-	if r.opts.Since != nil {
-		logOpts.Since = r.opts.Since
-	}
-	if r.opts.Until != nil {
-		logOpts.Until = r.opts.Until
+	// Use LogOrderCommitterTime so commits arrive in chronological order
+	// (newest first). This lets us stop early once we pass the Since boundary,
+	// instead of walking the entire commit graph.
+	logOpts := &git.LogOptions{
+		From:  fromHash,
+		Order: git.LogOrderCommitterTime,
 	}
 
 	cIter, err := r.repo.Log(logOpts)
@@ -64,6 +69,17 @@ func (r *HistoryReader) ReadChanges(ctx context.Context) ([]CommitChangeSet, err
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Manual time filtering with early termination.
+		// Because commits are ordered by committer time (newest first),
+		// once we see a commit before Since, all remaining are older too.
+		when := c.Committer.When
+		if r.opts.Until != nil && when.After(*r.opts.Until) {
+			return nil // skip: too new
+		}
+		if r.opts.Since != nil && when.Before(*r.opts.Since) {
+			return storer.ErrStop // early termination: all remaining are older
 		}
 
 		// Skip commits without parents (initial commit)
@@ -195,15 +211,31 @@ func (r *HistoryReader) getCommitChanges(ctx context.Context, c *object.Commit) 
 		return nil, err
 	}
 
-	parentTree, err := parent.Tree()
-	if err != nil {
-		return nil, err
+	// Fast path: identical tree hashes mean no file changes at all.
+	if parent.TreeHash == c.TreeHash {
+		return nil, nil
+	}
+
+	// Reuse cached tree when possible. In linear history the parent tree of
+	// the current commit is the current tree of the previous commit.
+	var parentTree *object.Tree
+	if r.lastTreeHash == parent.TreeHash && r.lastTree != nil {
+		parentTree = r.lastTree
+	} else {
+		parentTree, err = parent.Tree()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	tree, err := c.Tree()
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache this commit's tree for the next iteration.
+	r.lastTreeHash = c.TreeHash
+	r.lastTree = tree
 
 	changes, err := object.DiffTreeWithOptions(ctx, parentTree, tree, r.diffTreeOptions())
 	if err != nil {
@@ -218,6 +250,26 @@ func (r *HistoryReader) getCommitChanges(ctx context.Context, c *object.Commit) 
 	}
 }
 
+// extractPathAndKind determines the file path, old path, and change kind
+// from a single Change entry. It returns an empty path when the change
+// should be skipped (e.g. both names are empty).
+func extractPathAndKind(change *object.Change) (path, oldPath string, kind ChangeKind) {
+	switch {
+	case change.From.Name == "" && change.To.Name != "":
+		return change.To.Name, "", ChangeKindAdded
+	case change.From.Name != "" && change.To.Name == "":
+		return change.From.Name, "", ChangeKindDeleted
+	case change.From.Name != "" && change.To.Name != "" && change.From.Name != change.To.Name:
+		return change.To.Name, change.From.Name, ChangeKindRenamed
+	default:
+		p := change.To.Name
+		if p == "" {
+			p = change.From.Name
+		}
+		return p, "", ChangeKindModified
+	}
+}
+
 func (r *HistoryReader) changesFromTreeDiff(changes object.Changes) ([]FileChange, error) {
 	results := make([]FileChange, 0, len(changes))
 
@@ -227,28 +279,7 @@ func (r *HistoryReader) changesFromTreeDiff(changes object.Changes) ([]FileChang
 			continue
 		}
 
-		var path, oldPath string
-		var kind ChangeKind
-
-		switch {
-		case change.From.Name == "" && change.To.Name != "":
-			path = change.To.Name
-			kind = ChangeKindAdded
-		case change.From.Name != "" && change.To.Name == "":
-			path = change.From.Name
-			kind = ChangeKindDeleted
-		case change.From.Name != "" && change.To.Name != "" && change.From.Name != change.To.Name:
-			path = change.To.Name
-			oldPath = change.From.Name
-			kind = ChangeKindRenamed
-		default:
-			path = change.To.Name
-			if path == "" {
-				path = change.From.Name
-			}
-			kind = ChangeKindModified
-		}
-
+		path, oldPath, kind := extractPathAndKind(change)
 		if path == "" {
 			continue
 		}
@@ -315,6 +346,21 @@ func (r *HistoryReader) changesWithLineStats(ctx context.Context, changes object
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
+		}
+
+		// Fast path: when blob hashes are identical the content is unchanged
+		// (e.g. mode-only change like chmod +x). Skip the expensive
+		// PatchContext call which would read both blobs and run Myers diff.
+		if change.From.TreeEntry.Hash == change.To.TreeEntry.Hash {
+			path, oldPath, kind := extractPathAndKind(change)
+			if path != "" {
+				results = append(results, FileChange{
+					Path:    path,
+					OldPath: oldPath,
+					Kind:    kind,
+				})
+			}
+			continue
 		}
 
 		patch, err := change.PatchContext(ctx)

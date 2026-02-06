@@ -192,3 +192,37 @@ func BenchmarkHistoryReader_ReadChanges_Full_IncludeLargePath(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkHistoryReader_ReadChanges_TimeWindow measures the early termination
+// optimization: 200 total commits but only the last 40 are within the Since window.
+// With LogOrderCommitterTime, the iterator stops after ~40 commits instead of
+// walking all 200.
+func BenchmarkHistoryReader_ReadChanges_TimeWindow(b *testing.B) {
+	const totalCommits = 200
+	repoDir := createBenchRepo(b, totalCommits, 5, 0)
+
+	// Only include commits from the last 40 hours (out of totalCommits+10 hours).
+	since := time.Now().Add(-40 * time.Hour)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		reader, err := NewHistoryReader(ReadOptions{
+			RepoPath:     repoDir,
+			DetailLevel:  ChangeDetailPathsOnly,
+			RenameDetect: RenameDetectSimple,
+			Since:        &since,
+		})
+		if err != nil {
+			b.Fatalf("NewHistoryReader: %v", err)
+		}
+		changeSets, err := reader.ReadChanges(context.Background())
+		if err != nil {
+			b.Fatalf("ReadChanges: %v", err)
+		}
+		if len(changeSets) == 0 {
+			b.Fatalf("unexpected empty changesets")
+		}
+	}
+}
