@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/aggregation"
@@ -86,6 +87,6 @@ func analyzeAction(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Fprintf(c.App.ErrWriter, "\nCompleted in %s\n", time.Since(start))
+	fmt.Fprintf(os.Stderr, "\nCompleted in %s\n", time.Since(start))
 	return nil
 }
