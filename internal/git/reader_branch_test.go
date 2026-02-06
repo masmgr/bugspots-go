@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -95,7 +96,7 @@ func TestHistoryReader_ReadChanges_RespectsBranch(t *testing.T) {
 		t.Fatalf("NewHistoryReader(feature): %v", err)
 	}
 
-	featureChanges, err := featureReader.ReadChanges()
+	featureChanges, err := featureReader.ReadChanges(context.Background())
 	if err != nil {
 		t.Fatalf("ReadChanges(feature): %v", err)
 	}
@@ -114,7 +115,7 @@ func TestHistoryReader_ReadChanges_RespectsBranch(t *testing.T) {
 		t.Fatalf("NewHistoryReader(%s): %v", baseBranchShort, err)
 	}
 
-	baseChanges, err := baseReader.ReadChanges()
+	baseChanges, err := baseReader.ReadChanges(context.Background())
 	if err != nil {
 		t.Fatalf("ReadChanges(%s): %v", baseBranchShort, err)
 	}

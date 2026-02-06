@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -69,7 +70,7 @@ func NewCommandContextWithGitDetail(c *cli.Context, detail git.ChangeDetailLevel
 	}
 
 	// Read commit changes
-	changeSets, err := reader.ReadChanges()
+	changeSets, err := reader.ReadChanges(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to read history: %w", err)
 	}

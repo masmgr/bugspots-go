@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestMockHistoryReader_ReadChanges(t *testing.T) {
 	t.Run("returns change sets", func(t *testing.T) {
 		reader := NewMockHistoryReader(expectedChangeSets, nil)
 
-		changeSets, err := reader.ReadChanges()
+		changeSets, err := reader.ReadChanges(context.Background())
 
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
@@ -39,7 +40,7 @@ func TestMockHistoryReader_ReadChanges(t *testing.T) {
 		expectedErr := errors.New("test error")
 		reader := NewMockHistoryReader(nil, expectedErr)
 
-		_, err := reader.ReadChanges()
+		_, err := reader.ReadChanges(context.Background())
 
 		if err != expectedErr {
 			t.Errorf("expected error %v, got %v", expectedErr, err)

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,7 +110,7 @@ func BenchmarkHistoryReader_ReadChanges_Full(b *testing.B) {
 		if err != nil {
 			b.Fatalf("NewHistoryReader: %v", err)
 		}
-		changeSets, err := reader.ReadChanges()
+		changeSets, err := reader.ReadChanges(context.Background())
 		if err != nil {
 			b.Fatalf("ReadChanges: %v", err)
 		}
@@ -133,7 +134,7 @@ func BenchmarkHistoryReader_ReadChanges_PathsOnly(b *testing.B) {
 		if err != nil {
 			b.Fatalf("NewHistoryReader: %v", err)
 		}
-		changeSets, err := reader.ReadChanges()
+		changeSets, err := reader.ReadChanges(context.Background())
 		if err != nil {
 			b.Fatalf("ReadChanges: %v", err)
 		}
@@ -158,7 +159,7 @@ func BenchmarkHistoryReader_ReadChanges_Full_ExcludeLargePath(b *testing.B) {
 		if err != nil {
 			b.Fatalf("NewHistoryReader: %v", err)
 		}
-		changeSets, err := reader.ReadChanges()
+		changeSets, err := reader.ReadChanges(context.Background())
 		if err != nil {
 			b.Fatalf("ReadChanges: %v", err)
 		}
@@ -182,7 +183,7 @@ func BenchmarkHistoryReader_ReadChanges_Full_IncludeLargePath(b *testing.B) {
 		if err != nil {
 			b.Fatalf("NewHistoryReader: %v", err)
 		}
-		changeSets, err := reader.ReadChanges()
+		changeSets, err := reader.ReadChanges(context.Background())
 		if err != nil {
 			b.Fatalf("ReadChanges: %v", err)
 		}

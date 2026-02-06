@@ -34,8 +34,8 @@ func NewHistoryReader(opts ReadOptions) (*HistoryReader, error) {
 }
 
 // ReadChanges reads commit changes from the repository.
-// It returns a channel of CommitChangeSet for streaming processing.
-func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
+// The provided context controls cancellation of the operation.
+func (r *HistoryReader) ReadChanges(ctx context.Context) ([]CommitChangeSet, error) {
 	fromHash, err := r.resolveFromHash()
 	if err != nil {
 		return nil, err
@@ -59,6 +59,12 @@ func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
 	results := make([]CommitChangeSet, 0, 1000)
 
 	err = cIter.ForEach(func(c *object.Commit) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		// Skip commits without parents (initial commit)
 		if c.NumParents() == 0 {
 			return nil
@@ -69,7 +75,7 @@ func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
 			return nil
 		}
 
-		changes, err := r.getCommitChanges(c)
+		changes, err := r.getCommitChanges(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -177,7 +183,7 @@ func (r *HistoryReader) resolveFromHash() (plumbing.Hash, error) {
 }
 
 // getCommitChanges extracts file changes from a commit.
-func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error) {
+func (r *HistoryReader) getCommitChanges(ctx context.Context, c *object.Commit) ([]FileChange, error) {
 	parent, err := c.Parent(0)
 	if err != nil {
 		return nil, err
@@ -193,7 +199,7 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 		return nil, err
 	}
 
-	changes, err := object.DiffTreeWithOptions(context.Background(), parentTree, tree, r.diffTreeOptions())
+	changes, err := object.DiffTreeWithOptions(ctx, parentTree, tree, r.diffTreeOptions())
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +208,7 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 	case ChangeDetailPathsOnly:
 		return r.changesFromTreeDiff(changes)
 	default:
-		return r.changesWithLineStats(changes)
+		return r.changesWithLineStats(ctx, changes)
 	}
 }
 
@@ -261,7 +267,7 @@ func (r *HistoryReader) changesFromTreeDiff(changes object.Changes) ([]FileChang
 	return results, nil
 }
 
-func (r *HistoryReader) changesWithLineStats(changes object.Changes) ([]FileChange, error) {
+func (r *HistoryReader) changesWithLineStats(ctx context.Context, changes object.Changes) ([]FileChange, error) {
 	filtered := make(object.Changes, 0, len(changes))
 
 	for _, change := range changes {
@@ -293,75 +299,85 @@ func (r *HistoryReader) changesWithLineStats(changes object.Changes) ([]FileChan
 		return nil, nil
 	}
 
-	patch, err := filtered.Patch()
-	if err != nil {
-		return nil, err
-	}
+	// Process each file individually instead of generating a bulk patch.
+	// This reduces peak memory: only one file's diff data is held at a time,
+	// and supports cancellation between files via context.
+	results := make([]FileChange, 0, len(filtered))
 
-	filePatches := patch.FilePatches()
-	results := make([]FileChange, 0, len(filePatches))
-
-	for _, filePatch := range filePatches {
-		from, to := filePatch.Files()
-
-		var path, oldPath string
-		var kind ChangeKind
-
-		switch {
-		case from == nil && to != nil:
-			// Added
-			path = to.Path()
-			kind = ChangeKindAdded
-		case from != nil && to == nil:
-			// Deleted
-			path = from.Path()
-			kind = ChangeKindDeleted
-		case from != nil && to != nil && from.Path() != to.Path():
-			// Renamed
-			path = to.Path()
-			oldPath = from.Path()
-			kind = ChangeKindRenamed
+	for _, change := range filtered {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		default:
-			// Modified
-			if to != nil {
+		}
+
+		patch, err := change.PatchContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, filePatch := range patch.FilePatches() {
+			from, to := filePatch.Files()
+
+			var path, oldPath string
+			var kind ChangeKind
+
+			switch {
+			case from == nil && to != nil:
+				// Added
 				path = to.Path()
-			} else if from != nil {
+				kind = ChangeKindAdded
+			case from != nil && to == nil:
+				// Deleted
 				path = from.Path()
+				kind = ChangeKindDeleted
+			case from != nil && to != nil && from.Path() != to.Path():
+				// Renamed
+				path = to.Path()
+				oldPath = from.Path()
+				kind = ChangeKindRenamed
+			default:
+				// Modified
+				if to != nil {
+					path = to.Path()
+				} else if from != nil {
+					path = from.Path()
+				}
+				kind = ChangeKindModified
 			}
-			kind = ChangeKindModified
-		}
 
-		if path == "" {
-			continue
-		}
-
-		// Calculate line stats using strings.Count to avoid allocations.
-		var added, deleted int
-		for _, chunk := range filePatch.Chunks() {
-			content := chunk.Content()
-			if len(content) == 0 {
+			if path == "" {
 				continue
 			}
 
-			lineCount := strings.Count(content, "\n")
-			if content[len(content)-1] != '\n' {
-				lineCount++
-			}
-			switch chunk.Type() {
-			case fdiff.Add:
-				added += lineCount
-			case fdiff.Delete:
-				deleted += lineCount
-			}
-		}
+			// Calculate line stats using strings.Count to avoid allocations.
+			var added, deleted int
+			for _, chunk := range filePatch.Chunks() {
+				content := chunk.Content()
+				if len(content) == 0 {
+					continue
+				}
 
-		results = append(results, FileChange{
-			Path:         path,
-			OldPath:      oldPath,
-			LinesAdded:   added,
-			LinesDeleted: deleted,
-			Kind:         kind,
-		})
+				lineCount := strings.Count(content, "\n")
+				if content[len(content)-1] != '\n' {
+					lineCount++
+				}
+				switch chunk.Type() {
+				case fdiff.Add:
+					added += lineCount
+				case fdiff.Delete:
+					deleted += lineCount
+				}
+			}
+
+			results = append(results, FileChange{
+				Path:         path,
+				OldPath:      oldPath,
+				LinesAdded:   added,
+				LinesDeleted: deleted,
+				Kind:         kind,
+			})
+		}
 	}
 
 	return results, nil
@@ -413,7 +429,7 @@ func (r *HistoryReader) matchesFilters(path string) (bool, error) {
 }
 
 // ReadChangesWithDateRange is a convenience method to read changes within a date range.
-func ReadChangesWithDateRange(repoPath string, since, until time.Time) ([]CommitChangeSet, error) {
+func ReadChangesWithDateRange(ctx context.Context, repoPath string, since, until time.Time) ([]CommitChangeSet, error) {
 	reader, err := NewHistoryReader(ReadOptions{
 		RepoPath: repoPath,
 		Since:    &since,
@@ -422,5 +438,5 @@ func ReadChangesWithDateRange(repoPath string, since, until time.Time) ([]Commit
 	if err != nil {
 		return nil, err
 	}
-	return reader.ReadChanges()
+	return reader.ReadChanges(ctx)
 }
