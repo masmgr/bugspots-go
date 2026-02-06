@@ -11,8 +11,9 @@ import (
 
 // HistoryReader reads commit history from a Git repository.
 type HistoryReader struct {
-	repo *git.Repository
-	opts ReadOptions
+	repo        *git.Repository
+	opts        ReadOptions
+	filterCache map[string]bool // Cache for pattern matching results
 }
 
 // NewHistoryReader creates a new history reader for the given repository.
@@ -21,7 +22,11 @@ func NewHistoryReader(opts ReadOptions) (*HistoryReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &HistoryReader{repo: repo, opts: opts}, nil
+	return &HistoryReader{
+		repo:        repo,
+		opts:        opts,
+		filterCache: make(map[string]bool),
+	}, nil
 }
 
 // ReadChanges reads commit changes from the repository.
@@ -46,7 +51,7 @@ func (r *HistoryReader) ReadChanges() ([]CommitChangeSet, error) {
 		return nil, err
 	}
 
-	var results []CommitChangeSet
+	results := make([]CommitChangeSet, 0, 1000)
 
 	err = cIter.ForEach(func(c *object.Commit) error {
 		// Skip commits without parents (initial commit)
@@ -103,9 +108,10 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 		return nil, err
 	}
 
-	var changes []FileChange
+	filePatches := patch.FilePatches()
+	changes := make([]FileChange, 0, len(filePatches))
 
-	for _, filePatch := range patch.FilePatches() {
+	for _, filePatch := range filePatches {
 		from, to := filePatch.Files()
 
 		var path, oldPath string
@@ -144,16 +150,19 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 			continue
 		}
 
-		// Calculate line stats
+		// Calculate line stats using strings.Count to avoid allocations
 		var added, deleted int
 		for _, chunk := range filePatch.Chunks() {
 			content := chunk.Content()
-			lines := strings.Split(content, "\n")
+			lineCount := strings.Count(content, "\n")
+			if len(content) > 0 && content[len(content)-1] != '\n' {
+				lineCount++
+			}
 			switch chunk.Type() {
 			case 1: // Add
-				added += len(lines)
+				added += lineCount
 			case 2: // Delete
-				deleted += len(lines)
+				deleted += lineCount
 			}
 		}
 
@@ -170,20 +179,28 @@ func (r *HistoryReader) getCommitChanges(c *object.Commit) ([]FileChange, error)
 }
 
 // matchesFilters checks if a path matches the include/exclude filters.
+// Results are cached to avoid repeated pattern matching for the same path.
 func (r *HistoryReader) matchesFilters(path string) bool {
 	// Normalize path separators
 	path = strings.ReplaceAll(path, "\\", "/")
+
+	// Check cache first
+	if result, ok := r.filterCache[path]; ok {
+		return result
+	}
 
 	// Check exclude patterns first
 	for _, pattern := range r.opts.Exclude {
 		matched, _ := doublestar.Match(pattern, path)
 		if matched {
+			r.filterCache[path] = false
 			return false
 		}
 	}
 
 	// If no include patterns, accept all
 	if len(r.opts.Include) == 0 {
+		r.filterCache[path] = true
 		return true
 	}
 
@@ -191,10 +208,12 @@ func (r *HistoryReader) matchesFilters(path string) bool {
 	for _, pattern := range r.opts.Include {
 		matched, _ := doublestar.Match(pattern, path)
 		if matched {
+			r.filterCache[path] = true
 			return true
 		}
 	}
 
+	r.filterCache[path] = false
 	return false
 }
 

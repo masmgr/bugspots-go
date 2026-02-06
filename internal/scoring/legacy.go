@@ -2,6 +2,7 @@ package scoring
 
 import (
 	"math"
+	"sort"
 	"time"
 )
 
@@ -59,14 +60,10 @@ func RankLegacyHotspots(hotspots map[string]float64, maxSpots int) []LegacySpot 
 		spots = append(spots, LegacySpot{File: file, Score: score})
 	}
 
-	// Sort by score descending
-	for i := 0; i < len(spots)-1; i++ {
-		for j := i + 1; j < len(spots); j++ {
-			if spots[j].Score > spots[i].Score {
-				spots[i], spots[j] = spots[j], spots[i]
-			}
-		}
-	}
+	// Sort by score descending (O(n log n) instead of O(n²) bubble sort)
+	sort.Slice(spots, func(i, j int) bool {
+		return spots[i].Score > spots[j].Score
+	})
 
 	if maxSpots > 0 && maxSpots < len(spots) {
 		spots = spots[:maxSpots]

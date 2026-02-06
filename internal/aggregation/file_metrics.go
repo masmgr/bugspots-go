@@ -18,6 +18,7 @@ type FileMetrics struct {
 	ContributorCommitCounts map[string]int
 	CommitTimes             []time.Time
 	BurstScore              float64
+	cachedOwnershipRatio    *float64 // Cached ownership ratio to avoid repeated calculation
 }
 
 // NewFileMetrics creates a new FileMetrics instance.
@@ -43,23 +44,31 @@ func (f *FileMetrics) ContributorCount() int {
 // OwnershipRatio returns proportion of commits by top contributor.
 // A high ratio means concentrated ownership (one person owns the file).
 // A low ratio means dispersed ownership (many people contribute).
+// Results are cached for performance.
 func (f *FileMetrics) OwnershipRatio() float64 {
+	if f.cachedOwnershipRatio != nil {
+		return *f.cachedOwnershipRatio
+	}
+
+	var ratio float64
 	if f.CommitCount == 0 || len(f.ContributorCommitCounts) == 0 {
-		return 1.0
-	}
-
-	maxCommits := 0
-	for _, count := range f.ContributorCommitCounts {
-		if count > maxCommits {
-			maxCommits = count
+		ratio = 1.0
+	} else {
+		maxCommits := 0
+		for _, count := range f.ContributorCommitCounts {
+			if count > maxCommits {
+				maxCommits = count
+			}
 		}
+		ratio = float64(maxCommits) / float64(f.CommitCount)
 	}
 
-	return float64(maxCommits) / float64(f.CommitCount)
+	f.cachedOwnershipRatio = &ratio
+	return ratio
 }
 
 // AddCommit adds a commit's contribution to this file's metrics.
-func (f *FileMetrics) AddCommit(commit git.CommitInfo, change git.FileChange) {
+func (f *FileMetrics) AddCommit(commit git.CommitInfo, change git.FileChange, collectCommitTimes bool) {
 	f.CommitCount++
 	f.AddedLines += change.LinesAdded
 	f.DeletedLines += change.LinesDeleted
@@ -72,18 +81,35 @@ func (f *FileMetrics) AddCommit(commit git.CommitInfo, change git.FileChange) {
 	f.Contributors[contributorKey] = struct{}{}
 	f.ContributorCommitCounts[contributorKey]++
 
-	f.CommitTimes = append(f.CommitTimes, commit.When)
+	// Only collect commit times if needed for burst calculation
+	if collectCommitTimes {
+		f.CommitTimes = append(f.CommitTimes, commit.When)
+	}
+
+	// Invalidate cached ownership ratio when metrics change
+	f.cachedOwnershipRatio = nil
 }
 
 // FileMetricsAggregator aggregates file changes from commits.
 type FileMetricsAggregator struct {
-	metrics map[string]*FileMetrics
+	metrics            map[string]*FileMetrics
+	collectCommitTimes bool // Whether to collect commit times for burst calculation
 }
 
 // NewFileMetricsAggregator creates a new aggregator.
+// By default, commit times are collected for burst calculation.
 func NewFileMetricsAggregator() *FileMetricsAggregator {
 	return &FileMetricsAggregator{
-		metrics: make(map[string]*FileMetrics),
+		metrics:            make(map[string]*FileMetrics),
+		collectCommitTimes: true,
+	}
+}
+
+// NewFileMetricsAggregatorWithOptions creates a new aggregator with options.
+func NewFileMetricsAggregatorWithOptions(collectCommitTimes bool) *FileMetricsAggregator {
+	return &FileMetricsAggregator{
+		metrics:            make(map[string]*FileMetrics),
+		collectCommitTimes: collectCommitTimes,
 	}
 }
 
@@ -123,7 +149,7 @@ func (a *FileMetricsAggregator) processChangeSet(cs git.CommitChangeSet) {
 			a.metrics[path] = NewFileMetrics(path)
 		}
 
-		a.metrics[path].AddCommit(cs.Commit, change)
+		a.metrics[path].AddCommit(cs.Commit, change, a.collectCommitTimes)
 	}
 }
 
