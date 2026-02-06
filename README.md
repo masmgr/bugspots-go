@@ -231,53 +231,9 @@ Create a `.bugspots.json` or specify with `--config`:
 }
 ```
 
-## Risk Score Formulas
+## Scoring Algorithms
 
-### File Hotspot Score
-
-The risk score for each file is calculated as:
-
-```
-RiskScore =
-  0.30 * norm_log(CommitCount)
-+ 0.25 * norm_log(ChurnTotal)
-+ 0.20 * recency_decay(days_since_modified)
-+ 0.15 * BurstScore
-+ 0.10 * OwnershipDispersion
-```
-
-Where:
-- `norm_log(x)`: Logarithmic normalization: `(log(1+x) - log(1+min)) / (log(1+max) - log(1+min))`
-- `recency_decay(d)`: Exponential decay: `exp(-ln(2) * d / halfLifeDays)`
-- `BurstScore`: Proportion of commits in the densest N-day window
-- `OwnershipDispersion`: `1 - (maxContributorCommits / totalCommits)`
-
-### JIT Commit Risk Score
-
-The risk score for each commit is calculated as:
-
-```
-RiskScore =
-  0.35 * DiffusionScore
-+ 0.35 * SizeScore
-+ 0.30 * EntropyScore
-```
-
-Where:
-- `DiffusionScore`: Normalized combination of file count, directory count, and subsystem count
-- `SizeScore`: Normalized combination of lines added and lines deleted
-- `EntropyScore`: Shannon entropy of change distribution across files (0 = focused, 1 = spread)
-
-Risk levels:
-- **High**: Score >= 0.7
-- **Medium**: Score >= 0.4
-- **Low**: Score < 0.4
-
-### Coupling Metrics
-
-- **Jaccard Coefficient**: `|A intersection B| / |A union B|`
-- **Confidence(A->B)**: `CoCommitCount(A,B) / CommitCount(A)`
-- **Lift**: `P(A,B) / (P(A) * P(B))`
+For detailed documentation of all scoring formulas, normalization methods, and calculation algorithms, see [docs/SCORING.md](docs/SCORING.md).
 
 ## Output Examples
 
