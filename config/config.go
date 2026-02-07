@@ -26,7 +26,7 @@ type BugfixConfig struct {
 type LegacyConfig struct {
 	AnalysisWindowYears int    `json:"analysisWindowYears"` // Default: 3
 	MaxHotspots         int    `json:"maxHotspots"`         // Default: 100
-	DefaultBranch       string `json:"defaultBranch"`       // Default: "master"
+	DefaultBranch       string `json:"defaultBranch"`       // Default: "HEAD"
 	DefaultBugfixRegex  string `json:"defaultBugfixRegex"`  // Default: \b(fix(es|ed)?|close(s|d)?)\b
 }
 
@@ -68,6 +68,13 @@ type CommitWeightConfig struct {
 type RiskThresholds struct {
 	High   float64 `json:"high"`
 	Medium float64 `json:"medium"`
+}
+
+func DefaultRiskThresholds() RiskThresholds {
+	return RiskThresholds{
+		High:   0.7,
+		Medium: 0.4,
+	}
 }
 
 // Classify returns the risk level for a given score.
@@ -135,10 +142,7 @@ func DefaultConfig() *Config {
 				Size:      0.35,
 				Entropy:   0.30,
 			},
-			Thresholds: RiskThresholds{
-				High:   0.7,
-				Medium: 0.4,
-			},
+			Thresholds: DefaultRiskThresholds(),
 		},
 		Coupling: CouplingConfig{
 			MinCoCommits:        3,
@@ -153,7 +157,7 @@ func DefaultConfig() *Config {
 		Legacy: LegacyConfig{
 			AnalysisWindowYears: 3,
 			MaxHotspots:         100,
-			DefaultBranch:       "master",
+			DefaultBranch:       "HEAD",
 			DefaultBugfixRegex:  `\b(fix(es|ed)?|close(s|d)?)\b`,
 		},
 	}

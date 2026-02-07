@@ -91,8 +91,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Legacy.MaxHotspots != 100 {
 		t.Errorf("Legacy.MaxHotspots = %d, expected 100", cfg.Legacy.MaxHotspots)
 	}
-	if cfg.Legacy.DefaultBranch != "master" {
-		t.Errorf("Legacy.DefaultBranch = %q, expected %q", cfg.Legacy.DefaultBranch, "master")
+	if cfg.Legacy.DefaultBranch != "HEAD" {
+		t.Errorf("Legacy.DefaultBranch = %q, expected %q", cfg.Legacy.DefaultBranch, "HEAD")
 	}
 }
 

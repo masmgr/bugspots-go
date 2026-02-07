@@ -43,7 +43,7 @@ func (w *CIFileWriter) Write(report *FileAnalysisReport, options OutputOptions) 
 		defer file.Close()
 	}
 
-	thresholds := config.DefaultConfig().CommitScoring.Thresholds
+	thresholds := config.DefaultRiskThresholds()
 
 	// Classify and count risk levels
 	var highCount, mediumCount int

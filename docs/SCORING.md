@@ -396,7 +396,7 @@ All settings can be overridden via the `.bugspots.json` file or command-line fla
 |---------|---------|-------------|
 | `legacy.analysisWindowYears` | 3 | Analysis window (years) |
 | `legacy.maxHotspots` | 100 | Maximum number of hotspots to display |
-| `legacy.defaultBranch` | `"master"` | Default branch |
+| `legacy.defaultBranch` | `"HEAD"` | Default branch |
 | `legacy.defaultBugfixRegex` | `\b(fix(es\|ed)?\|close(s\|d)?)\b` | Bugfix detection pattern |
 
 ---

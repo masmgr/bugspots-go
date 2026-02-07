@@ -134,7 +134,7 @@ go build -o bugspots-go .
 ### Legacy Mode (Original Bugspots)
 
 ```bash
-# Scan default branch (master) with default bugfix indicators
+# Scan current HEAD with default bugfix indicators
 ./bugspots-go /path/to/repo
 
 # Scan specific branch

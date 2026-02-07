@@ -22,7 +22,7 @@ func LegacyScanFlags() []cli.Flag {
 			Name:    "branch",
 			Aliases: []string{"b"},
 			Value:   "",
-			Usage:   "Branch to analyze (default: from config or 'master')",
+			Usage:   "Branch to analyze (default: from config or 'HEAD')",
 		},
 		&cli.IntFlag{
 			Name:    "depth",

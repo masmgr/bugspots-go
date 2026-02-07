@@ -129,6 +129,7 @@ func (s *FileScorer) ScoreAndRank(
 		// Calculate total score
 		totalScore := commitComponent + churnComponent + recencyComponent +
 			burstComponent + ownershipComponent + bugfixComponent
+		totalScore = Clamp(totalScore)
 
 		var breakdown *ScoreBreakdown
 		if explain {
