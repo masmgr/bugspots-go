@@ -135,7 +135,7 @@ Each command is defined in its own file:
 
 ## Test Suite
 
-The test suite includes 23 test files across all packages with 90+ test functions and 280+ test cases. See [TESTS.md](TESTS.md) for detailed test documentation.
+The test suite includes 23 test files across all packages with 90+ test functions and 280+ test cases. See [TESTS.md](docs/TESTS.md) for detailed test documentation.
 
 ### Key test areas:
 - **cmd/** - `convertToRegex()` conversion and regex validation
