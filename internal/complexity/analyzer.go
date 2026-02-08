@@ -102,7 +102,7 @@ func countLinesBatch(ctx context.Context, repoPath string, entries []lsTreeEntry
 	for _, e := range entries {
 		if _, err := fmt.Fprintf(stdin, "%s\n", e.BlobHash); err != nil {
 			stdin.Close()
-			cmd.Wait()
+			_ = cmd.Wait()
 			return nil, fmt.Errorf("cat-file write: %w", err)
 		}
 	}
@@ -143,7 +143,7 @@ func countLinesBatch(ctx context.Context, repoPath string, entries []lsTreeEntry
 		content = content[:n]
 
 		// Read trailing newline after content
-		reader.ReadByte()
+		_, _ = reader.ReadByte()
 
 		// Skip binary files (contain NUL byte)
 		if bytes.ContainsRune(content, 0) {
