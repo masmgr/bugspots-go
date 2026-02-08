@@ -20,6 +20,7 @@ func App() *cli.App {
 			AnalyzeCmd(),
 			CommitsCmd(),
 			CouplingCmd(),
+			CalibrateCmd(),
 			ScanCmd(),
 		},
 		Flags: []cli.Flag{

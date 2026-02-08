@@ -24,11 +24,12 @@ go build -o bugspots-go .
 
 ### Common usage examples
 ```bash
-# 6-factor file hotspot analysis (recommended)
+# Multi-factor file hotspot analysis (recommended)
 ./bugspots-go analyze --repo /path/to/repo
 ./bugspots-go analyze --repo /path/to/repo --since 2025-01-01
 ./bugspots-go analyze --repo /path/to/repo --format json --output report.json
 ./bugspots-go analyze --repo /path/to/repo --diff origin/main...HEAD
+./bugspots-go analyze --repo /path/to/repo --include-complexity --explain
 
 # JIT commit risk analysis
 ./bugspots-go commits --repo /path/to/repo
@@ -37,6 +38,10 @@ go build -o bugspots-go .
 # File change coupling analysis
 ./bugspots-go coupling --repo /path/to/repo
 ./bugspots-go coupling --repo /path/to/repo --min-co-commits 5 --min-jaccard 0.3
+
+# Score weight calibration
+./bugspots-go calibrate --repo /path/to/repo --since 2025-01-01
+./bugspots-go calibrate --repo /path/to/repo --top-percent 30
 
 # Legacy scan mode (original bugspots behavior)
 ./bugspots-go scan /path/to/repo
@@ -85,7 +90,7 @@ gofmt -l .
 
 ## Architecture
 
-The project uses a modular architecture with four CLI commands backed by internal packages.
+The project uses a modular architecture with five CLI commands backed by internal packages.
 
 ### app.go - Entry Point
 - Minimal entry point that delegates to `cmd.App()`
@@ -95,9 +100,10 @@ The project uses a modular architecture with four CLI commands backed by interna
 Each command is defined in its own file:
 
 - **root.go** - Defines the CLI app structure with `urfave/cli/v2`, common flags, config loading, output format parsing, and legacy action handler
-- **analyze.go** - `analyze` command: 6-factor file hotspot analysis (commit frequency, churn, recency, burst, ownership, bugfix). Supports `--diff` for PR/CI integration and `--ci-threshold` for automated gating
+- **analyze.go** - `analyze` command: multi-factor file hotspot analysis (commit frequency, churn, recency, burst, ownership, bugfix, complexity). Supports `--diff` for PR/CI integration, `--ci-threshold` for automated gating, and `--include-complexity` for file size scoring
 - **commits.go** - `commits` command: JIT defect prediction scoring individual commits by diffusion, size, and entropy. Supports `--risk-level` filtering
 - **coupling.go** - `coupling` command: file change coupling analysis using Jaccard coefficient with configurable thresholds
+- **calibrate.go** - `calibrate` command: weight calibration using historical bugfix data. Optimizes scoring weights via coordinate descent to maximize detection rate
 - **scan.go** - `scan` command: legacy bugspots mode preserving the original CLI interface. Contains `convertToRegex()`, `getFixes()`, and `showScanResult()`
 - **context.go** - `CommandContext` struct encapsulating shared setup logic (config, date parsing, Git reader initialization) used by all commands
 
@@ -107,7 +113,7 @@ Each command is defined in its own file:
 - **internal/bugfix/** - Pattern-based bugfix commit detection using configurable regex patterns
 - **internal/scoring/** - Scoring algorithms:
   - `legacy.go` - Original sigmoid-based temporal scoring: `1 / (1 + exp((-12*t)+12))`
-  - `file_scorer.go` - 6-factor weighted file risk scoring
+  - `file_scorer.go` - Multi-factor weighted file risk scoring (7 factors including complexity)
   - `commit_scorer.go` - JIT commit risk scoring (diffusion, size, entropy)
   - `normalization.go` - Score normalization utilities (min-max, logarithmic, recency decay, clamping)
 - **internal/aggregation/** - Metrics aggregation from commit history:
@@ -117,6 +123,8 @@ Each command is defined in its own file:
 - **internal/coupling/** - File change coupling analysis using Jaccard coefficient
 - **internal/burst/** - Sliding window burst detection for commit frequency analysis
 - **internal/entropy/** - Shannon entropy calculation for commit change distribution
+- **internal/complexity/** - File complexity measurement via git cat-file (line count)
+- **internal/calibration/** - Score weight calibration using coordinate descent optimization
 
 ### config/ - Configuration
 - JSON-based configuration via `.bugspots.json` files (project root or home directory)

@@ -274,11 +274,11 @@ config/
 
 ---
 
-## 未実装機能
+## 実装済み機能（追加）
 
-### 優先度A（高）：精度向上
+### ✅ 優先度A（高）：精度向上
 
-#### A1. ファイル複雑度メトリクスの追加
+#### ✅ A1. ファイル複雑度メトリクスの追加
 
 **目的**: 変更パターンだけでなく、コード自体の特性を見る
 
@@ -294,14 +294,17 @@ config/
 --include-complexity   ファイル複雑度をスコアに含める
 ```
 
-**実装予定ファイル**:
-- `internal/complexity/analyzer.go` - ファイル複雑度計算
-- `internal/aggregation/file_metrics.go` - FileSize, Complexity メトリクス追加
-- `internal/scoring/file_scorer.go` - Complexity コンポーネント追加
+**実装ファイル**:
+- `internal/complexity/analyzer.go` - ファイル複雑度計算（git cat-file --batch による行数カウント）
+- `internal/aggregation/file_metrics.go` - FileSize メトリクス追加
+- `internal/scoring/file_scorer.go` - Complexity コンポーネント追加（7要素スコアリング）
+- `config/config.go` - WeightConfig に Complexity を追加
+- `cmd/analyze.go` - `--include-complexity` フラグ追加
+- 出力ファイル群（console, json, csv, markdown）に Lines/Cx カラム追加
 
 ---
 
-#### A2. スコアキャリブレーション
+#### ✅ A2. スコアキャリブレーション
 
 **目的**: ユーザーが適切な重みを判断できるようにする
 
@@ -334,11 +337,14 @@ Recommended weights:
 Expected detection rate with recommended weights: 78%
 ```
 
-**実装予定ファイル**:
-- `internal/calibration/optimizer.go` - 重み最適化
-- `cmd/calibrate.go` - calibrate コマンド
+**実装ファイル**:
+- `internal/calibration/optimizer.go` - 座標降下法による重み最適化
+- `cmd/calibrate.go` - calibrate サブコマンド
+- `cmd/root.go` - コマンド登録
 
 ---
+
+### 未実装機能
 
 ### 優先度B（中）：運用改善
 

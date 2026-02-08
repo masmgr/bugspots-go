@@ -26,10 +26,10 @@ func (w *CSVFileWriter) Write(report *FileAnalysisReport, options OutputOptions)
 
 	// Write header
 	headers := []string{"Path", "RiskScore", "CommitCount", "ChurnAdded", "ChurnDeleted", "ChurnTotal",
-		"LastModified", "Contributors", "BurstScore", "OwnershipRatio", "BugfixCount"}
+		"LastModified", "Contributors", "BurstScore", "OwnershipRatio", "BugfixCount", "FileSize"}
 	if options.Explain {
 		headers = append(headers, "CommitComponent", "ChurnComponent", "RecencyComponent",
-			"BurstComponent", "OwnershipComponent", "BugfixComponent")
+			"BurstComponent", "OwnershipComponent", "BugfixComponent", "ComplexityComponent")
 	}
 	if err := writer.Write(headers); err != nil {
 		return err
@@ -49,6 +49,7 @@ func (w *CSVFileWriter) Write(report *FileAnalysisReport, options OutputOptions)
 			fmt.Sprintf("%.6f", item.Metrics.BurstScore),
 			fmt.Sprintf("%.6f", item.Metrics.OwnershipRatio()),
 			fmt.Sprintf("%d", item.Metrics.BugfixCount),
+			fmt.Sprintf("%d", item.Metrics.FileSize),
 		}
 		if options.Explain && item.Breakdown != nil {
 			row = append(row,
@@ -58,6 +59,7 @@ func (w *CSVFileWriter) Write(report *FileAnalysisReport, options OutputOptions)
 				fmt.Sprintf("%.6f", item.Breakdown.BurstComponent),
 				fmt.Sprintf("%.6f", item.Breakdown.OwnershipComponent),
 				fmt.Sprintf("%.6f", item.Breakdown.BugfixComponent),
+				fmt.Sprintf("%.6f", item.Breakdown.ComplexityComponent),
 			)
 		}
 		if err := writer.Write(row); err != nil {

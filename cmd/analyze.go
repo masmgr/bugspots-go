@@ -8,6 +8,7 @@ import (
 	"github.com/masmgr/bugspots-go/internal/aggregation"
 	"github.com/masmgr/bugspots-go/internal/bugfix"
 	"github.com/masmgr/bugspots-go/internal/burst"
+	"github.com/masmgr/bugspots-go/internal/complexity"
 	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/masmgr/bugspots-go/internal/scoring"
@@ -38,6 +39,10 @@ func AnalyzeCmd() *cli.Command {
 		&cli.Float64Flag{
 			Name:  "ci-threshold",
 			Usage: "Exit with non-zero status if any file exceeds this risk score",
+		},
+		&cli.BoolFlag{
+			Name:  "include-complexity",
+			Usage: "Include file complexity (line count) in scoring",
 		},
 	)
 
@@ -87,6 +92,30 @@ func analyzeAction(c *cli.Context) error {
 	// Calculate burst scores
 	burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
 	burstCalc.Compute(metrics)
+
+	// Measure file complexity (line counts) if requested
+	if c.Bool("include-complexity") {
+		pathSet := make(map[string]struct{}, len(metrics))
+		for p := range metrics {
+			pathSet[p] = struct{}{}
+		}
+		branch := ctx.Branch
+		if branch == "" {
+			branch = "HEAD"
+		}
+		lineCounts, err := complexity.FileLineCounts(context.Background(), ctx.RepoPath, branch, pathSet)
+		if err != nil {
+			return fmt.Errorf("failed to measure file complexity: %w", err)
+		}
+		for path, count := range lineCounts {
+			if fm, ok := metrics[path]; ok {
+				fm.FileSize = count
+			}
+		}
+	} else {
+		// Zero out complexity weight when not measuring
+		ctx.Config.Scoring.Weights.Complexity = 0
+	}
 
 	// Calculate risk scores
 	explain := c.Bool("explain")

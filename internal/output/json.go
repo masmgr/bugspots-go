@@ -39,16 +39,18 @@ type JSONFileMetrics struct {
 	BurstScore     float64 `json:"burstScore"`
 	OwnershipRatio float64 `json:"ownershipRatio"`
 	BugfixCount    int     `json:"bugfixCount"`
+	FileSize       int     `json:"fileSize"`
 }
 
 // JSONFileBreakdown holds the score breakdown for a file in JSON format.
 type JSONFileBreakdown struct {
-	Commit    float64 `json:"commit"`
-	Churn     float64 `json:"churn"`
-	Recency   float64 `json:"recency"`
-	Burst     float64 `json:"burst"`
-	Ownership float64 `json:"ownership"`
-	Bugfix    float64 `json:"bugfix"`
+	Commit     float64 `json:"commit"`
+	Churn      float64 `json:"churn"`
+	Recency    float64 `json:"recency"`
+	Burst      float64 `json:"burst"`
+	Ownership  float64 `json:"ownership"`
+	Bugfix     float64 `json:"bugfix"`
+	Complexity float64 `json:"complexity"`
 }
 
 // Write outputs the file analysis report as JSON.
@@ -73,16 +75,18 @@ func (w *JSONFileWriter) Write(report *FileAnalysisReport, options OutputOptions
 				BurstScore:     item.Metrics.BurstScore,
 				OwnershipRatio: item.Metrics.OwnershipRatio(),
 				BugfixCount:    item.Metrics.BugfixCount,
+				FileSize:       item.Metrics.FileSize,
 			},
 		}
 		if options.Explain && item.Breakdown != nil {
 			jsonItem.Breakdown = &JSONFileBreakdown{
-				Commit:    item.Breakdown.CommitComponent,
-				Churn:     item.Breakdown.ChurnComponent,
-				Recency:   item.Breakdown.RecencyComponent,
-				Burst:     item.Breakdown.BurstComponent,
-				Ownership: item.Breakdown.OwnershipComponent,
-				Bugfix:    item.Breakdown.BugfixComponent,
+				Commit:     item.Breakdown.CommitComponent,
+				Churn:      item.Breakdown.ChurnComponent,
+				Recency:    item.Breakdown.RecencyComponent,
+				Burst:      item.Breakdown.BurstComponent,
+				Ownership:  item.Breakdown.OwnershipComponent,
+				Bugfix:     item.Breakdown.BugfixComponent,
+				Complexity: item.Breakdown.ComplexityComponent,
 			}
 		}
 		jsonItems[i] = jsonItem

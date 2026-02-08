@@ -36,14 +36,15 @@ type ScoringConfig struct {
 	Weights      WeightConfig `json:"weights"`
 }
 
-// WeightConfig holds weights for 6-factor scoring.
+// WeightConfig holds weights for multi-factor scoring.
 type WeightConfig struct {
-	Commit    float64 `json:"commit"`
-	Churn     float64 `json:"churn"`
-	Recency   float64 `json:"recency"`
-	Burst     float64 `json:"burst"`
-	Ownership float64 `json:"ownership"`
-	Bugfix    float64 `json:"bugfix"`
+	Commit     float64 `json:"commit"`
+	Churn      float64 `json:"churn"`
+	Recency    float64 `json:"recency"`
+	Burst      float64 `json:"burst"`
+	Ownership  float64 `json:"ownership"`
+	Bugfix     float64 `json:"bugfix"`
+	Complexity float64 `json:"complexity"`
 }
 
 // BurstConfig holds burst calculation options.
@@ -117,12 +118,13 @@ func DefaultConfig() *Config {
 		Scoring: ScoringConfig{
 			HalfLifeDays: 30,
 			Weights: WeightConfig{
-				Commit:    0.25,
-				Churn:     0.20,
-				Recency:   0.15,
-				Burst:     0.10,
-				Ownership: 0.10,
-				Bugfix:    0.20,
+				Commit:     0.20,
+				Churn:      0.20,
+				Recency:    0.15,
+				Burst:      0.10,
+				Ownership:  0.10,
+				Bugfix:     0.15,
+				Complexity: 0.10,
 			},
 		},
 		Burst: BurstConfig{

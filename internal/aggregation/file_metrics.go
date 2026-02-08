@@ -19,6 +19,7 @@ type FileMetrics struct {
 	CommitTimes             []time.Time
 	BurstScore              float64
 	BugfixCount             int      // Number of bugfix commits touching this file
+	FileSize                int      // Number of lines in the file (0 if not measured)
 	cachedOwnershipRatio    *float64 // Cached ownership ratio to avoid repeated calculation
 }
 
@@ -213,6 +214,11 @@ func (a *FileMetricsAggregator) mergeMetrics(target, source *FileMetrics) {
 
 	target.CommitTimes = append(target.CommitTimes, source.CommitTimes...)
 	target.BugfixCount += source.BugfixCount
+
+	// Keep the larger file size (snapshot value)
+	if source.FileSize > target.FileSize {
+		target.FileSize = source.FileSize
+	}
 
 	// Invalidate cache due to merged contributor counts / commit count changes.
 	target.cachedOwnershipRatio = nil

@@ -31,15 +31,15 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 
 	// Write header
 	if options.Explain {
-		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tBugfixes\tC\tCh\tR\tB\tO\tBf")
+		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tBugfixes\tLines\tC\tCh\tR\tB\tO\tBf\tCx")
 	} else {
-		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tBugfixes")
+		fmt.Fprintln(tw, "#\tPath\tScore\tCommits\tChurn\tContributors\tBurst\tBugfixes\tLines")
 	}
 
 	// Write rows
 	for i, item := range items {
 		if options.Explain && item.Breakdown != nil {
-			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%d\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
 				i+1,
 				item.Path,
 				item.RiskScore,
@@ -48,15 +48,17 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 				item.Metrics.ContributorCount(),
 				item.Metrics.BurstScore,
 				item.Metrics.BugfixCount,
+				item.Metrics.FileSize,
 				item.Breakdown.CommitComponent,
 				item.Breakdown.ChurnComponent,
 				item.Breakdown.RecencyComponent,
 				item.Breakdown.BurstComponent,
 				item.Breakdown.OwnershipComponent,
 				item.Breakdown.BugfixComponent,
+				item.Breakdown.ComplexityComponent,
 			)
 		} else {
-			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%d\n",
+			fmt.Fprintf(tw, "%d\t%s\t%.4f\t%d\t%d\t%d\t%.2f\t%d\t%d\n",
 				i+1,
 				item.Path,
 				item.RiskScore,
@@ -65,6 +67,7 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 				item.Metrics.ContributorCount(),
 				item.Metrics.BurstScore,
 				item.Metrics.BugfixCount,
+				item.Metrics.FileSize,
 			)
 		}
 	}
@@ -72,7 +75,7 @@ func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOpti
 	tw.Flush()
 
 	if options.Explain {
-		fmt.Println("\nScore breakdown: C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership, Bf=Bugfix")
+		fmt.Println("\nScore breakdown: C=Commit, Ch=Churn, R=Recency, B=Burst, O=Ownership, Bf=Bugfix, Cx=Complexity")
 	}
 
 	return nil

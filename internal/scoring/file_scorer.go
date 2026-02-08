@@ -18,12 +18,13 @@ type FileRiskItem struct {
 
 // ScoreBreakdown shows the contribution of each component to the total score.
 type ScoreBreakdown struct {
-	CommitComponent    float64
-	ChurnComponent     float64
-	RecencyComponent   float64
-	BurstComponent     float64
-	OwnershipComponent float64
-	BugfixComponent    float64
+	CommitComponent     float64
+	ChurnComponent      float64
+	RecencyComponent    float64
+	BurstComponent      float64
+	OwnershipComponent  float64
+	BugfixComponent     float64
+	ComplexityComponent float64
 }
 
 // NormalizationContext holds the min/max values needed for normalization.
@@ -31,6 +32,7 @@ type NormalizationContext struct {
 	CommitCount MinMax
 	ChurnTotal  MinMax
 	BugfixCount MinMax
+	FileSize    MinMax
 }
 
 // FromMetrics computes the normalization context from file metrics.
@@ -39,6 +41,7 @@ func FromMetrics(metrics map[string]*aggregation.FileMetrics) NormalizationConte
 		CommitCount: MinMax{Min: 0, Max: 0},
 		ChurnTotal:  MinMax{Min: 0, Max: 0},
 		BugfixCount: MinMax{Min: 0, Max: 0},
+		FileSize:    MinMax{Min: 0, Max: 0},
 	}
 
 	first := true
@@ -46,11 +49,13 @@ func FromMetrics(metrics map[string]*aggregation.FileMetrics) NormalizationConte
 		commitCount := float64(fm.CommitCount)
 		churnTotal := float64(fm.ChurnTotal())
 		bugfixCount := float64(fm.BugfixCount)
+		fileSize := float64(fm.FileSize)
 
 		if first {
 			ctx.CommitCount = MinMax{Min: commitCount, Max: commitCount}
 			ctx.ChurnTotal = MinMax{Min: churnTotal, Max: churnTotal}
 			ctx.BugfixCount = MinMax{Min: bugfixCount, Max: bugfixCount}
+			ctx.FileSize = MinMax{Min: fileSize, Max: fileSize}
 			first = false
 			continue
 		}
@@ -72,6 +77,12 @@ func FromMetrics(metrics map[string]*aggregation.FileMetrics) NormalizationConte
 		}
 		if bugfixCount > ctx.BugfixCount.Max {
 			ctx.BugfixCount.Max = bugfixCount
+		}
+		if fileSize < ctx.FileSize.Min {
+			ctx.FileSize.Min = fileSize
+		}
+		if fileSize > ctx.FileSize.Max {
+			ctx.FileSize.Max = fileSize
 		}
 	}
 
@@ -126,20 +137,24 @@ func (s *FileScorer) ScoreAndRank(
 		// Calculate bugfix component
 		bugfixComponent := weights.Bugfix * NormLog(float64(fm.BugfixCount), ctx.BugfixCount)
 
+		// Calculate complexity component (file size in lines)
+		complexityComponent := weights.Complexity * NormLog(float64(fm.FileSize), ctx.FileSize)
+
 		// Calculate total score
 		totalScore := commitComponent + churnComponent + recencyComponent +
-			burstComponent + ownershipComponent + bugfixComponent
+			burstComponent + ownershipComponent + bugfixComponent + complexityComponent
 		totalScore = Clamp(totalScore)
 
 		var breakdown *ScoreBreakdown
 		if explain {
 			breakdown = &ScoreBreakdown{
-				CommitComponent:    commitComponent,
-				ChurnComponent:     churnComponent,
-				RecencyComponent:   recencyComponent,
-				BurstComponent:     burstComponent,
-				OwnershipComponent: ownershipComponent,
-				BugfixComponent:    bugfixComponent,
+				CommitComponent:     commitComponent,
+				ChurnComponent:      churnComponent,
+				RecencyComponent:    recencyComponent,
+				BurstComponent:      burstComponent,
+				OwnershipComponent:  ownershipComponent,
+				BugfixComponent:     bugfixComponent,
+				ComplexityComponent: complexityComponent,
 			}
 		}
 
