@@ -44,40 +44,27 @@ func CouplingCmd() *cli.Command {
 }
 
 func couplingAction(c *cli.Context) error {
-	// Create command context (handles config, dates, git reader)
-	ctx, err := NewCommandContextWithGitDetail(c, git.ChangeDetailPathsOnly)
-	if err != nil {
-		return err
-	}
-	defer ctx.LogCompletion()
+	return executeWithContext(c, git.ChangeDetailPathsOnly, func(ctx *CommandContext, c *cli.Context) error {
+		// Analyze coupling
+		analyzer := coupling.NewAnalyzer(ctx.Config.Coupling)
+		result := analyzer.Analyze(ctx.ChangeSets)
 
-	if !ctx.HasCommits() {
-		ctx.PrintNoCommitsMessage()
+		// Create report
+		report := &output.CouplingAnalysisReport{
+			RepoPath:    ctx.RepoPath,
+			Since:       ctx.Since,
+			Until:       ctx.Until,
+			GeneratedAt: time.Now(),
+			Result:      result,
+		}
+
+		// Output results
+		opts := OutputOptions(c)
+		writer := output.NewCouplingReportWriter(opts.Format)
+		if err := writer.Write(report, opts); err != nil {
+			return err
+		}
+
 		return nil
-	}
-
-	// Override config from CLI flags
-	ctx.ApplyCLIOverrides(c)
-
-	// Analyze coupling
-	analyzer := coupling.NewAnalyzer(ctx.Config.Coupling)
-	result := analyzer.Analyze(ctx.ChangeSets)
-
-	// Create report
-	report := &output.CouplingAnalysisReport{
-		RepoPath:    ctx.RepoPath,
-		Since:       ctx.Since,
-		Until:       ctx.Until,
-		GeneratedAt: time.Now(),
-		Result:      result,
-	}
-
-	// Output results
-	opts := OutputOptions(c)
-	writer := output.NewCouplingReportWriter(opts.Format)
-	if err := writer.Write(report, opts); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }

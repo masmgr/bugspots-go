@@ -6,9 +6,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/aggregation"
-	"github.com/masmgr/bugspots-go/internal/bugfix"
 	"github.com/masmgr/bugspots-go/internal/burst"
 	"github.com/masmgr/bugspots-go/internal/calibration"
+	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/urfave/cli/v2"
 )
 
@@ -45,74 +45,55 @@ func CalibrateCmd() *cli.Command {
 }
 
 func calibrateAction(c *cli.Context) error {
-	// Create command context
-	ctx, err := NewCommandContext(c)
-	if err != nil {
-		return err
-	}
-	defer ctx.LogCompletion()
+	return executeWithContext(c, git.ChangeDetailFull, func(ctx *CommandContext, c *cli.Context) error {
+		// Aggregate file metrics
+		aggregator := aggregation.NewFileMetricsAggregator()
+		metrics := aggregator.Process(ctx.ChangeSets)
 
-	if !ctx.HasCommits() {
-		ctx.PrintNoCommitsMessage()
-		return nil
-	}
-
-	// Override config from CLI flags
-	ctx.ApplyCLIOverrides(c)
-
-	// Aggregate file metrics
-	aggregator := aggregation.NewFileMetricsAggregator()
-	metrics := aggregator.Process(ctx.ChangeSets)
-
-	// Detect bugfix commits
-	bugPatterns := c.StringSlice("bug-patterns")
-	if len(bugPatterns) == 0 {
-		bugPatterns = ctx.Config.Bugfix.Patterns
-	}
-	if len(bugPatterns) == 0 {
-		return fmt.Errorf("no bugfix patterns configured; use --bug-patterns or configure in .bugspots.json")
-	}
-
-	detector, err := bugfix.NewDetector(bugPatterns)
-	if err != nil {
-		return fmt.Errorf("invalid bug pattern: %w", err)
-	}
-	result := detector.Detect(ctx.ChangeSets)
-	aggregation.ApplyBugfixCounts(metrics, aggregator, result.FileBugfixCounts)
-
-	if result.TotalBugfixes == 0 {
-		fmt.Println("No bugfix commits found. Cannot calibrate weights.")
-		fmt.Println("Consider adjusting --bug-patterns or --since to include more history.")
-		return nil
-	}
-
-	// Calculate burst scores
-	burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
-	burstCalc.Compute(metrics)
-
-	// Build bugfix file set
-	bugfixFiles := make(map[string]struct{})
-	for path := range result.FileBugfixCounts {
-		canonical := aggregator.CanonicalPath(path)
-		if _, ok := metrics[canonical]; ok {
-			bugfixFiles[canonical] = struct{}{}
+		// Detect bugfix commits
+		bugPatterns := resolveBugPatterns(c, ctx.Config)
+		if len(bugPatterns) == 0 {
+			return fmt.Errorf("no bugfix patterns configured; use --bug-patterns or configure in .bugspots.json")
 		}
-	}
+		result, err := detectAndApplyBugfixes(ctx.ChangeSets, metrics, aggregator, bugPatterns)
+		if err != nil {
+			return err
+		}
 
-	// Run calibration
-	calResult := calibration.Calibrate(calibration.CalibrateInput{
-		Metrics:        metrics,
-		BugfixFiles:    bugfixFiles,
-		CurrentWeights: ctx.Config.Scoring.Weights,
-		HalfLifeDays:   ctx.Config.Scoring.HalfLifeDays,
-		Until:          ctx.Until,
-		TopPercent:     c.Int("top-percent"),
+		if result.TotalBugfixes == 0 {
+			fmt.Println("No bugfix commits found. Cannot calibrate weights.")
+			fmt.Println("Consider adjusting --bug-patterns or --since to include more history.")
+			return nil
+		}
+
+		// Calculate burst scores
+		burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
+		burstCalc.Compute(metrics)
+
+		// Build bugfix file set
+		bugfixFiles := make(map[string]struct{})
+		for path := range result.FileBugfixCounts {
+			canonical := aggregator.CanonicalPath(path)
+			if _, ok := metrics[canonical]; ok {
+				bugfixFiles[canonical] = struct{}{}
+			}
+		}
+
+		// Run calibration
+		calResult := calibration.Calibrate(calibration.CalibrateInput{
+			Metrics:        metrics,
+			BugfixFiles:    bugfixFiles,
+			CurrentWeights: ctx.Config.Scoring.Weights,
+			HalfLifeDays:   ctx.Config.Scoring.HalfLifeDays,
+			Until:          ctx.Until,
+			TopPercent:     c.Int("top-percent"),
+		})
+
+		// Display results
+		printCalibrationResult(calResult, c.Int("top-percent"))
+
+		return nil
 	})
-
-	// Display results
-	printCalibrationResult(calResult, c.Int("top-percent"))
-
-	return nil
 }
 
 func printCalibrationResult(result calibration.CalibrateResult, topPercent int) {

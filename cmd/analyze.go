@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/masmgr/bugspots-go/internal/aggregation"
-	"github.com/masmgr/bugspots-go/internal/bugfix"
 	"github.com/masmgr/bugspots-go/internal/burst"
 	"github.com/masmgr/bugspots-go/internal/complexity"
 	"github.com/masmgr/bugspots-go/internal/git"
@@ -56,109 +55,90 @@ func AnalyzeCmd() *cli.Command {
 }
 
 func analyzeAction(c *cli.Context) error {
-	// Create command context (handles config, dates, git reader)
-	ctx, err := NewCommandContext(c)
-	if err != nil {
-		return err
-	}
-	defer ctx.LogCompletion()
+	return executeWithContext(c, git.ChangeDetailFull, func(ctx *CommandContext, c *cli.Context) error {
+		// Aggregate file metrics
+		aggregator := aggregation.NewFileMetricsAggregator()
+		metrics := aggregator.Process(ctx.ChangeSets)
 
-	if !ctx.HasCommits() {
-		ctx.PrintNoCommitsMessage()
-		return nil
-	}
-
-	// Override config from CLI flags
-	ctx.ApplyCLIOverrides(c)
-
-	// Aggregate file metrics
-	aggregator := aggregation.NewFileMetricsAggregator()
-	metrics := aggregator.Process(ctx.ChangeSets)
-
-	// Detect bugfix commits and apply counts
-	bugPatterns := c.StringSlice("bug-patterns")
-	if len(bugPatterns) == 0 {
-		bugPatterns = ctx.Config.Bugfix.Patterns
-	}
-	if len(bugPatterns) > 0 {
-		detector, err := bugfix.NewDetector(bugPatterns)
-		if err != nil {
-			return fmt.Errorf("invalid bug pattern: %w", err)
-		}
-		result := detector.Detect(ctx.ChangeSets)
-		aggregation.ApplyBugfixCounts(metrics, aggregator, result.FileBugfixCounts)
-	}
-
-	// Calculate burst scores
-	burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
-	burstCalc.Compute(metrics)
-
-	// Measure file complexity (line counts) if requested
-	if c.Bool("include-complexity") {
-		pathSet := make(map[string]struct{}, len(metrics))
-		for p := range metrics {
-			pathSet[p] = struct{}{}
-		}
-		branch := ctx.Branch
-		if branch == "" {
-			branch = "HEAD"
-		}
-		lineCounts, err := complexity.FileLineCounts(context.Background(), ctx.RepoPath, branch, pathSet)
-		if err != nil {
-			return fmt.Errorf("failed to measure file complexity: %w", err)
-		}
-		for path, count := range lineCounts {
-			if fm, ok := metrics[path]; ok {
-				fm.FileSize = count
+		// Detect bugfix commits and apply counts
+		bugPatterns := resolveBugPatterns(c, ctx.Config)
+		if len(bugPatterns) > 0 {
+			if _, err := detectAndApplyBugfixes(ctx.ChangeSets, metrics, aggregator, bugPatterns); err != nil {
+				return err
 			}
 		}
-	} else {
-		// Zero out complexity weight when not measuring
-		ctx.Config.Scoring.Weights.Complexity = 0
-	}
 
-	// Calculate risk scores
-	explain := c.Bool("explain")
-	scorer := scoring.NewFileScorer(ctx.Config.Scoring)
-	items := scorer.ScoreAndRank(metrics, explain, ctx.Until)
+		// Calculate burst scores
+		burstCalc := burst.NewCalculator(ctx.Config.Burst.WindowDays)
+		burstCalc.Compute(metrics)
 
-	// Filter by diff if specified
-	if diffSpec := c.String("diff"); diffSpec != "" {
-		diffResult, err := git.ReadDiff(context.Background(), git.DiffOptions{
-			RepoPath: ctx.RepoPath,
-			DiffSpec: diffSpec,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to read diff: %w", err)
+		// Measure file complexity (line counts) if requested
+		if c.Bool("include-complexity") {
+			pathSet := make(map[string]struct{}, len(metrics))
+			for p := range metrics {
+				pathSet[p] = struct{}{}
+			}
+			branch := ctx.Branch
+			if branch == "" {
+				branch = "HEAD"
+			}
+			lineCounts, err := complexity.FileLineCounts(context.Background(), ctx.RepoPath, branch, pathSet)
+			if err != nil {
+				return fmt.Errorf("failed to measure file complexity: %w", err)
+			}
+			for path, count := range lineCounts {
+				if fm, ok := metrics[path]; ok {
+					fm.FileSize = count
+				}
+			}
+		} else {
+			// Zero out complexity weight when not measuring
+			ctx.Config.Scoring.Weights.Complexity = 0
 		}
-		items = filterByDiff(items, diffResult)
-	}
 
-	// Create report
-	report := &output.FileAnalysisReport{
-		RepoPath:    ctx.RepoPath,
-		Since:       ctx.Since,
-		Until:       ctx.Until,
-		GeneratedAt: time.Now(),
-		Items:       items,
-	}
+		// Calculate risk scores
+		explain := c.Bool("explain")
+		scorer := scoring.NewFileScorer(ctx.Config.Scoring)
+		items := scorer.ScoreAndRank(metrics, explain, ctx.Until)
 
-	// Output results
-	opts := OutputOptions(c)
-	writer := output.NewFileReportWriter(opts.Format)
-	if err := writer.Write(report, opts); err != nil {
-		return err
-	}
-
-	// Check CI threshold
-	if threshold := c.Float64("ci-threshold"); threshold > 0 && len(items) > 0 {
-		if items[0].RiskScore >= threshold {
-			return fmt.Errorf("risk threshold exceeded: %s has score %.4f (threshold: %.4f)",
-				items[0].Path, items[0].RiskScore, threshold)
+		// Filter by diff if specified
+		if diffSpec := c.String("diff"); diffSpec != "" {
+			diffResult, err := git.ReadDiff(context.Background(), git.DiffOptions{
+				RepoPath: ctx.RepoPath,
+				DiffSpec: diffSpec,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to read diff: %w", err)
+			}
+			items = filterByDiff(items, diffResult)
 		}
-	}
 
-	return nil
+		// Create report
+		report := &output.FileAnalysisReport{
+			RepoPath:    ctx.RepoPath,
+			Since:       ctx.Since,
+			Until:       ctx.Until,
+			GeneratedAt: time.Now(),
+			Items:       items,
+		}
+
+		// Output results
+		opts := OutputOptions(c)
+		writer := output.NewFileReportWriter(opts.Format)
+		if err := writer.Write(report, opts); err != nil {
+			return err
+		}
+
+		// Check CI threshold
+		if threshold := c.Float64("ci-threshold"); threshold > 0 && len(items) > 0 {
+			if items[0].RiskScore >= threshold {
+				return fmt.Errorf("risk threshold exceeded: %s has score %.4f (threshold: %.4f)",
+					items[0].Path, items[0].RiskScore, threshold)
+			}
+		}
+
+		return nil
+	})
 }
 
 // filterByDiff filters scored items to only include files present in the diff result.

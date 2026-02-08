@@ -45,6 +45,8 @@ type CommandContext struct {
 	StartTime  time.Time
 }
 
+type commandExecutor func(ctx *CommandContext, c *cli.Context) error
+
 // NewCommandContext creates a context from CLI flags.
 // It performs configuration loading, date parsing, repository opening, and history reading.
 func NewCommandContext(c *cli.Context) (*CommandContext, error) {
@@ -115,6 +117,22 @@ func NewCommandContextWithGitDetail(c *cli.Context, detail git.ChangeDetailLevel
 		ChangeSets: changeSets,
 		StartTime:  start,
 	}, nil
+}
+
+func executeWithContext(c *cli.Context, detail git.ChangeDetailLevel, exec commandExecutor) error {
+	ctx, err := NewCommandContextWithGitDetail(c, detail)
+	if err != nil {
+		return err
+	}
+	defer ctx.LogCompletion()
+
+	if !ctx.HasCommits() {
+		ctx.PrintNoCommitsMessage()
+		return nil
+	}
+
+	ctx.ApplyCLIOverrides(c)
+	return exec(ctx, c)
 }
 
 // ApplyCLIOverrides applies command-specific CLI flag values to the config.
