@@ -3,11 +3,12 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/aggregation"
 	"github.com/masmgr/bugspots-go/internal/bugfix"
 	"github.com/masmgr/bugspots-go/internal/git"
-	"github.com/urfave/cli/v2"
 )
 
 func resolveBugPatterns(c *cli.Context, cfg *config.Config) []string {

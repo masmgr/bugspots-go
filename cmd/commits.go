@@ -3,12 +3,13 @@ package cmd
 import (
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/aggregation"
 	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/masmgr/bugspots-go/internal/scoring"
-	"github.com/urfave/cli/v2"
 )
 
 // CommitsCmd returns the commits command.

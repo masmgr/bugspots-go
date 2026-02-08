@@ -5,9 +5,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/output"
-	"github.com/urfave/cli/v2"
 )
 
 // App creates the CLI application.

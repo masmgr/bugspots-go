@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"pgregory.net/rapid"
+
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/aggregation"
-	"pgregory.net/rapid"
 )
 
 // --- Generators ---

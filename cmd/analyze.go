@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/internal/aggregation"
 	"github.com/masmgr/bugspots-go/internal/burst"
 	"github.com/masmgr/bugspots-go/internal/complexity"
 	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
 	"github.com/masmgr/bugspots-go/internal/scoring"
-	"github.com/urfave/cli/v2"
 )
 
 // AnalyzeCmd returns the analyze command.

@@ -3,10 +3,11 @@ package cmd
 import (
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/internal/coupling"
 	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
-	"github.com/urfave/cli/v2"
 )
 
 // CouplingCmd returns the coupling command.

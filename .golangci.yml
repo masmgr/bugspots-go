@@ -1,6 +1,6 @@
 linters:
   enable:
-    - vet           # Standard Go linter
+    - govet         # Standard Go linter (renamed from vet)
     - gofmt         # Go fmt
     - goimports     # Import organization
     - errcheck      # Unchecked errors

@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/git"
 	"github.com/masmgr/bugspots-go/internal/output"
-	"github.com/urfave/cli/v2"
 )
 
 func parseRenameDetectFlag(s string, detail git.ChangeDetailLevel) (git.RenameDetectMode, error) {

@@ -5,8 +5,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/masmgr/bugspots-go/internal/git"
 	"pgregory.net/rapid"
+
+	"github.com/masmgr/bugspots-go/internal/git"
 )
 
 // --- Generators ---

@@ -4,12 +4,13 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
+	"github.com/urfave/cli/v2"
+
 	"github.com/masmgr/bugspots-go/config"
 	"github.com/masmgr/bugspots-go/internal/aggregation"
 	"github.com/masmgr/bugspots-go/internal/burst"
 	"github.com/masmgr/bugspots-go/internal/calibration"
 	"github.com/masmgr/bugspots-go/internal/git"
-	"github.com/urfave/cli/v2"
 )
 
 // CalibrateCmd returns the calibrate command.
