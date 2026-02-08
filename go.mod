@@ -6,6 +6,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/fatih/color v1.18.0
 	github.com/urfave/cli/v2 v2.27.7
+	pgregory.net/rapid v1.2.0
 )
 
 require (
