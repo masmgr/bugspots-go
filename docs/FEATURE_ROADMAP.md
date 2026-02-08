@@ -4,16 +4,32 @@
 
 本ドキュメントは、bugspots-go ツールの機能ロードマップを定義する。
 
-## 現状の課題
-
-現在のスコアリングは「変更が多い＝リスクが高い」という仮定に基づいている。この方式には以下の限界がある：
-
-1. **活発に開発中のファイルが常に上位に来る** - 単なる「よく変わるファイル一覧」になりがち
-2. **過去のバグとの相関がない** - 実際にバグが発生したファイルとの関連性が考慮されていない
-3. **CI連携での実用性が低い** - PR単位での差分分析ができない
-4. **重みの根拠が不明確** - ユーザーが適切な重みを判断できない
-
 ## 実装済み機能
+
+### ✅ Phase 1: 基盤移植（完了）
+1. ✅ 設定システム（`config/config.go`）
+2. ✅ Git Reader 拡張（`internal/git/reader.go`, `models.go`）
+3. ✅ 正規化サービス（`internal/scoring/normalization.go`）
+4. ✅ ファイルメトリクス集約（`internal/aggregation/file_metrics.go`）
+5. ✅ バーストスコア計算（`internal/burst/sliding_window.go`）
+6. ✅ ファイルリスクスコアラー（`internal/scoring/file_scorer.go`）
+
+### ✅ Phase 2: JIT コミット分析（完了）
+1. ✅ Shannon エントロピー（`internal/entropy/shannon.go`）
+2. ✅ コミットメトリクス計算（`internal/aggregation/commit_metrics.go`）
+3. ✅ コミットリスクスコアラー（`internal/scoring/commit_scorer.go`）
+4. ✅ commits コマンド（`cmd/commits.go`）
+
+### ✅ Phase 3: Change Coupling 分析（完了）
+1. ✅ Change Coupling Analyzer（`internal/coupling/analyzer.go`）
+2. ✅ coupling コマンド（`cmd/coupling.go`）
+3. ✅ 出力形式（Console, JSON, CSV, Markdown）
+
+### ✅ Phase 4: 精度と実用性の根本改善（完了）
+1. ✅ バグ修正コミット検出（`internal/bugfix/detector.go`）
+2. ✅ Bugfix メトリクスの6要素スコアリング統合
+3. ✅ 差分モード実装（`--diff` オプション）
+4. ✅ CI連携（`--ci-threshold` オプション、CI/NDJSON出力形式）
 
 ### ✅ Priority A：JIT基盤機能（実装完了）
 
@@ -99,18 +115,96 @@ Lift = P(A,B) / (P(A) × P(B))
 - `cmd/coupling.go` - coupling コマンド
 - `config/config.go` - CouplingConfig 設定
 
+#### B3. バグ修正コミットとの相関
+
+**実装内容**:
+- コミットメッセージからバグ修正パターンを正規表現で抽出（大文字小文字を区別しない）
+- 「そのファイルが過去にバグ修正された回数」を6要素スコアリングの1コンポーネントとして統合
+- 設定ファイルおよび `--bug-patterns` CLI フラグでパターンをカスタマイズ可能
+
+**デフォルトパターン**:
+```
+\bfix(ed|es)?\b
+\bbug\b
+\bhotfix\b
+\bpatch\b
+```
+
+**使用方法**:
+```bash
+# デフォルトパターンで分析
+./bugspots-go analyze --repo /path/to/repo
+
+# カスタムパターンを指定
+./bugspots-go analyze --repo /path/to/repo --bug-patterns "\\bfix(ed|es)?\\b" --bug-patterns "\\bbug\\b"
+```
+
+**実装ファイル**:
+- `internal/bugfix/detector.go` - バグ修正コミット検出
+- `internal/aggregation/file_metrics.go` - BugfixCount メトリクス
+- `internal/scoring/file_scorer.go` - Bugfix コンポーネント（重み 0.20）
+- `config/config.go` - BugfixConfig 設定
+
+#### B4. 差分モード（PR/ブランチ単位の分析）
+
+**実装内容**:
+- 2つのコミット/ブランチ間の差分ファイルのみを対象に分析
+- `--diff` フラグで三点（`...`）および二点（`..`）構文をサポート
+- リネームも正しく追跡（OldPath と Path の両方を含む）
+- `--ci-threshold` によるCI自動ゲーティング
+
+**使用方法**:
+```bash
+# PRの変更ファイルのみ分析
+./bugspots-go analyze --diff origin/main...HEAD
+
+# CIでしきい値超過を検出
+./bugspots-go analyze --diff origin/main...HEAD --ci-threshold 0.7
+```
+
+**CI連携例**:
+```yaml
+- name: Check PR Risk
+  run: |
+    ./bugspots-go analyze --diff origin/main...HEAD --ci-threshold 0.7
+    # しきい値超過で非ゼロ終了
+```
+
+**実装ファイル**:
+- `internal/git/diff.go` - 差分ファイル取得（`git diff --name-status -z`）
+- `cmd/analyze.go` - `--diff` / `--ci-threshold` オプション
+
+#### B5. リネーム追跡
+
+**実装内容**:
+- 3つの検出モードをサポート
+  - `off`: リネーム追跡なし（`--no-renames`）
+  - `simple`: 完全一致のリネーム検出（`-M100%`、デフォルト）
+  - `aggressive`: 類似度ベースのリネーム検出（`-M60%`）
+
+**使用方法**:
+```bash
+./bugspots-go analyze --repo /path/to/repo --rename-detect aggressive
+./bugspots-go analyze --repo /path/to/repo --rename-detect off
+```
+
+**実装ファイル**:
+- `internal/git/reader_gitcli.go` - リネーム検出モード実装
+- `cmd/context.go` - `parseRenameDetectFlag()`
+
 ---
 
 ## 現状分析
 
-### 5コンポーネントファイルスコアリング
+### 6コンポーネントファイルスコアリング
 
 | コンポーネント | 重み | 説明 |
 |---------------|------|------|
-| Commit Frequency | 30% | ログ正規化されたコミット数 |
-| Code Churn | 25% | 追加行 + 削除行 |
-| Recency | 20% | 最終更新からの指数減衰 |
-| Burst Activity | 15% | 7日窓での変更集中度 |
+| Commit Frequency | 25% | ログ正規化されたコミット数 |
+| Code Churn | 20% | 追加行 + 削除行 |
+| Bugfix | 20% | ログ正規化されたバグ修正コミット数 |
+| Recency | 15% | 最終更新からの指数減衰（半減期30日） |
+| Burst Activity | 10% | 7日窓での変更集中度 |
 | Ownership | 10% | 所有権分散度（1 - 最大寄与率） |
 
 ### JIT コミットスコアリング
@@ -121,140 +215,70 @@ Lift = P(A,B) / (P(A) × P(B))
 | Size | 35% | 追加行数 + 削除行数 |
 | Entropy | 30% | 変更の Shannon エントロピー |
 
+### 出力形式
+
+| 形式 | フラグ | 説明 |
+|------|--------|------|
+| console | `--format console` | カラー付きテーブル出力（デフォルト） |
+| json | `--format json` | 標準 JSON |
+| csv | `--format csv` | CSV スプレッドシート |
+| markdown | `--format markdown` | Markdown テーブル |
+| ci | `--format ci` | NDJSON（1行1JSONオブジェクト、CI パイプライン向け） |
+
 ### アーキテクチャ
 
 ```
+app.go                        # エントリポイント（レガシーフラグ付加）
+
 cmd/                          # CLI コマンド
-├── root.go                   # 共通フラグ、App 設定
-├── analyze.go                # File Hotspot 分析
+├── root.go                   # 共通フラグ、App 設定、出力形式解析
+├── context.go                # CommandContext（共通セットアップ）
+├── analyze.go                # 6要素 File Hotspot 分析
 ├── commits.go                # JIT Commit Risk 分析
-└── coupling.go               # Change Coupling 分析
+├── coupling.go               # Change Coupling 分析
+└── scan.go                   # レガシー bugspots モード
 
 internal/
 ├── git/
-│   ├── reader.go             # Git 履歴読み取り
-│   └── models.go             # CommitInfo, FileChange, CommitChangeSet
+│   ├── reader.go             # HistoryReader（Git 履歴読み取り）
+│   ├── reader_gitcli.go      # Git CLI 実装（numstat/raw 出力解析）
+│   ├── models.go             # CommitChangeSet, FileChange, ReadOptions
+│   └── diff.go               # 差分ファイル取得（--diff 用）
 ├── scoring/
-│   ├── normalization.go      # NormLog, RecencyDecay
-│   ├── file_scorer.go        # 5要素ファイルスコアリング
-│   └── commit_scorer.go      # JIT コミットスコアリング
+│   ├── legacy.go             # オリジナル sigmoid ベーススコアリング
+│   ├── normalization.go      # NormLog, RecencyDecay, Clamp
+│   ├── file_scorer.go        # 6要素ファイルリスクスコアリング
+│   └── commit_scorer.go      # JIT コミットリスクスコアリング
 ├── aggregation/
 │   ├── file_metrics.go       # ファイル単位メトリクス集約
 │   └── commit_metrics.go     # コミット単位メトリクス計算
+├── bugfix/
+│   └── detector.go           # バグ修正コミット検出（正規表現）
 ├── burst/
 │   └── sliding_window.go     # O(n) バーストスコア計算
 ├── entropy/
 │   └── shannon.go            # Shannon エントロピー計算
 ├── coupling/
-│   └── analyzer.go           # 共変更パターン分析
+│   └── analyzer.go           # 共変更パターン分析（Jaccard）
 └── output/
-    ├── formatter.go          # 出力インターフェース
-    ├── console.go            # テーブル出力
+    ├── formatter.go          # 出力インターフェース、共通ヘルパー
+    ├── console.go            # カラー付きテーブル出力
     ├── json.go               # JSON 出力
     ├── csv.go                # CSV 出力
-    └── markdown.go           # Markdown 出力
+    ├── markdown.go           # Markdown 出力
+    └── ci.go                 # NDJSON 出力（CI パイプライン用）
 
 config/
-└── config.go                 # 設定構造体、JSON 読み込み
+└── config.go                 # 設定構造体、JSON 読み込み、デフォルト値
 ```
 
 ---
 
 ## 未実装機能
 
-## 優先度A（高）：精度と実用性の根本改善
+### 優先度A（高）：精度向上
 
-### A1. バグ修正コミットとの相関を組み込む
-
-**目的**: 過去のバグ修正コミットを特定し、それと相関の高いファイルにスコアを寄せる
-
-**現状の問題**:
-現在のスコアは「変更が多い＝リスクが高い」という仮定だけで動いている。これだと活発に開発中のファイルが常に上位に来て、ノイズが大きい。
-
-**実装内容**:
-- コミットメッセージからバグ修正パターンを正規表現で抽出
-- 「そのファイルが過去にバグ修正された回数」を独立したメトリクスとして追加
-- これは元の bugspots アルゴリズムの本質でもある
-
-**設定例**:
-```json
-{
-  "bugPatterns": [
-    "\\bfix(ed|es)?\\b",
-    "\\bbug\\b",
-    "\\bhotfix\\b",
-    "\\bpatch\\b",
-    "#\\d+",
-    "[A-Z]+-\\d+"
-  ]
-}
-```
-
-**CLI オプション**:
-```bash
---bug-patterns <REGEX>   バグ修正を示すコミットメッセージパターン
-```
-
-**実装予定ファイル**:
-- `internal/bugfix/detector.go` - バグ修正コミット検出
-- `internal/aggregation/file_metrics.go` - BugfixCount メトリクス追加
-- `internal/scoring/file_scorer.go` - Bugfix コンポーネント追加
-- `config/config.go` - BugPatterns 設定追加
-
----
-
-### A2. 差分モード（PR/ブランチ単位の分析）
-
-**目的**: CI連携でPR単位の分析を可能にする
-
-**現状の問題**:
-全ファイルを分析するため、CI連携では「今回変更されたファイルの中でリスクが高いものはどれか」を知ることができない。
-
-**実装内容**:
-- 2つのコミット/ブランチ間の差分ファイルのみを対象に分析
-- 変更されたファイルのリスクスコアを返す
-- PR レビューの優先順位付けに直結
-
-**CLI オプション**:
-```bash
-./bugspots-go analyze --diff origin/main...HEAD
-./bugspots-go analyze --diff abc123..def456
-```
-
-**出力例**:
-```json
-{
-  "base": "origin/main",
-  "head": "HEAD",
-  "changedFiles": 5,
-  "highRiskFiles": [
-    {
-      "path": "src/auth/login.go",
-      "riskScore": 0.82,
-      "changeType": "modified"
-    }
-  ]
-}
-```
-
-**CI連携例**:
-```yaml
-- name: Check PR Risk
-  run: |
-    ./bugspots-go analyze --diff origin/main...HEAD --format json --output pr-risk.json
-    # 高リスクファイルがあれば警告
-```
-
-**実装予定ファイル**:
-- `internal/git/diff.go` - 差分ファイル取得
-- `cmd/analyze.go` - `--diff` オプション追加
-- `internal/output/` - 差分モード用出力
-
----
-
-## 優先度B（中）：精度向上
-
-### B1. ファイル複雑度メトリクスの追加
+#### A1. ファイル複雑度メトリクスの追加
 
 **目的**: 変更パターンだけでなく、コード自体の特性を見る
 
@@ -277,7 +301,7 @@ config/
 
 ---
 
-### B2. スコアキャリブレーション
+#### A2. スコアキャリブレーション
 
 **目的**: ユーザーが適切な重みを判断できるようにする
 
@@ -285,7 +309,7 @@ config/
 重みは固定のデフォルト値で、ユーザーが適切な重みを判断できない。
 
 **実装内容**:
-1. **実績ベースのキャリブレーション**: 過去のバグ修正コミット（A1で検出）を「正解データ」として、各メトリクスの重みを最適化（単純な線形回帰）
+1. **実績ベースのキャリブレーション**: 過去のバグ修正コミット（検出済み）を「正解データ」として、各メトリクスの重みを最適化（単純な線形回帰）
 2. **検出率表示**: `--calibrate` オプションで「この重みでの過去のバグ修正ファイルの検出率（再現率）」を表示
 
 **CLI オプション**:
@@ -300,12 +324,12 @@ Calibration Results (based on 150 bug-fix commits):
 Current weights detection rate: 65%
 
 Recommended weights:
-  commit:    0.20 (current: 0.30)
-  churn:     0.30 (current: 0.25)  ← このリポジトリでは churn の相関が強い
-  recency:   0.15 (current: 0.20)
-  burst:     0.20 (current: 0.15)
+  commit:    0.20 (current: 0.25)
+  churn:     0.25 (current: 0.20)  ← このリポジトリでは churn の相関が強い
+  recency:   0.10 (current: 0.15)
+  burst:     0.15 (current: 0.10)
   ownership: 0.05 (current: 0.10)
-  bugfix:    0.10 (new)
+  bugfix:    0.25 (current: 0.20)
 
 Expected detection rate with recommended weights: 78%
 ```
@@ -316,9 +340,9 @@ Expected detection rate with recommended weights: 78%
 
 ---
 
-## 優先度C（低）：運用改善
+### 優先度B（中）：運用改善
 
-### C1. トレンド分析
+#### B1. トレンド分析
 
 **目的**: スコアの時系列変化を追跡する
 
@@ -352,7 +376,7 @@ Declining Risk Files:
 
 ---
 
-### C2. JIT経験メトリクス拡張
+#### B2. JIT経験メトリクス拡張
 
 **目的**: 既存の `commits` コマンドに経験ベースのメトリクスを追加
 
@@ -372,7 +396,7 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-### C3. 重複変更（Duplicate Changes）除去
+#### B3. 重複変更（Duplicate Changes）除去
 
 **目的**: 自動整形やボイラープレート変更によるノイズを除去
 
@@ -393,29 +417,9 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-### C4. リネーム追跡の強化
+### 優先度C（低）：パフォーマンス最適化
 
-**目的**: ファイル名変更を追跡し、同一ファイルとして扱う
-
-**モード**:
-- `off`: リネーム追跡なし（デフォルト）
-- `simple`: 基本的なリネーム検出
-- `aggressive`: 内容ベースの類似度検出
-
-**CLI オプション**:
-```bash
---rename-detect off|simple|aggressive
-```
-
-**実装予定ファイル**:
-- `internal/git/reader.go` - リネーム検出オプション追加
-- `internal/git/rename.go` - リネーム追跡ロジック
-
----
-
-## 優先度D：パフォーマンス最適化
-
-### D1. インクリメンタル分析
+#### C1. インクリメンタル分析
 
 **目的**: 大規模リポジトリでの分析時間短縮
 
@@ -431,7 +435,7 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 --refresh            キャッシュを無効化して再分析
 ```
 
-### D2. 並列処理
+#### C2. 並列処理
 
 **目的**: マルチコアを活用した分析高速化
 
@@ -442,41 +446,39 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-## 設定ファイル拡張
+## 設定ファイル
 
-### .bugspots.json 拡張例
+### .bugspots.json 現在の構成
+
 ```json
 {
   "scoring": {
     "halfLifeDays": 30,
     "weights": {
-      "commit": 0.20,
+      "commit": 0.25,
       "churn": 0.20,
       "recency": 0.15,
-      "burst": 0.15,
+      "burst": 0.10,
       "ownership": 0.10,
       "bugfix": 0.20
     }
   },
-  "bugPatterns": [
-    "\\bfix(ed|es)?\\b",
-    "\\bbug\\b",
-    "\\bhotfix\\b",
-    "\\bpatch\\b",
-    "#\\d+",
-    "[A-Z]+-\\d+"
-  ],
+  "bugfix": {
+    "patterns": [
+      "\\bfix(ed|es)?\\b",
+      "\\bbug\\b",
+      "\\bhotfix\\b",
+      "\\bpatch\\b"
+    ]
+  },
   "burst": {
     "windowDays": 7
   },
   "commitScoring": {
     "weights": {
-      "diffusion": 0.25,
-      "size": 0.20,
-      "entropy": 0.20,
-      "experience": 0.15,
-      "history": 0.10,
-      "burstContext": 0.10
+      "diffusion": 0.35,
+      "size": 0.35,
+      "entropy": 0.30
     },
     "thresholds": {
       "high": 0.7,
@@ -489,13 +491,26 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
     "maxFilesPerCommit": 50,
     "topPairs": 50
   },
-  "complexity": {
-    "enabled": false,
-    "weight": 0.10
-  },
   "filters": {
     "include": ["src/**", "apps/**"],
     "exclude": ["**/vendor/**", "**/testdata/**"]
+  },
+  "legacy": {
+    "analysisWindowYears": 3,
+    "maxHotspots": 100,
+    "defaultBranch": "HEAD",
+    "defaultBugfixRegex": "\\b(fix(es|ed)?|close(s|d)?)\\b"
+  }
+}
+```
+
+### 拡張予定の設定項目
+
+```json
+{
+  "complexity": {
+    "enabled": false,
+    "weight": 0.10
   },
   "dedupe": {
     "enabled": false,
@@ -513,105 +528,29 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
 
 ---
 
-## 出力形式拡張
-
-### JSON出力拡張例（Phase 4以降）
-```json
-{
-  "repo": "/path/to/repo",
-  "since": "2024-01-01T00:00:00Z",
-  "until": "2025-01-15T12:00:00Z",
-  "generatedAt": "2025-01-15T12:30:00Z",
-  "summary": {
-    "totalFiles": 150,
-    "analyzedCommits": 523,
-    "uniqueContributors": 12
-  },
-  "items": [
-    {
-      "rank": 1,
-      "path": "src/core/auth.go",
-      "riskScore": 0.89,
-      "metrics": {
-        "commitCount": 45,
-        "addedLines": 1200,
-        "deletedLines": 800,
-        "lastModified": "2025-01-14T15:30:00Z",
-        "contributorCount": 5,
-        "burstScore": 0.85,
-        "ownershipDispersion": 0.55
-      },
-      "breakdown": {
-        "commitComponent": 0.22,
-        "churnComponent": 0.18,
-        "recencyComponent": 0.14,
-        "burstComponent": 0.13,
-        "ownershipComponent": 0.07
-      },
-      "coupling": [
-        { "file": "src/core/session.go", "jaccard": 0.78 },
-        { "file": "src/api/auth_handler.go", "jaccard": 0.65 }
-      ]
-    }
-  ]
-}
-```
-
----
-
 ## 優先度まとめ
 
 | 優先度 | 機能 | 理由 |
 |--------|------|------|
-| **A（高）** | バグ修正コミットの相関 | 精度への直接的インパクトが最大。これがないと「よく変わるファイル一覧」でしかない |
-| **A（高）** | 差分モード | CI連携の実用性が劇的に変わる |
-| **B（中）** | ファイル複雑度 | 実装コストが低い割に精度が上がる |
-| **B（中）** | スコアキャリブレーション | バグ修正相関の実装後にやるとさらに効果的 |
-| **C（低）** | トレンド分析 | 運用が定着してからで良い |
-| **C（低）** | JIT経験メトリクス | 有用だが実装コストが高め |
-| **C（低）** | 重複変更除去 | ノイズ対策として有用 |
-| **D** | パフォーマンス最適化 | 大規模リポジトリ対応時 |
-
-**推奨**: A1（バグ修正相関）と A2（差分モード）を先に実装すれば、ツールの価値が根本的に変わる。
+| **A（高）** | ファイル複雑度 | 実装コストが低い割に精度が上がる |
+| **A（高）** | スコアキャリブレーション | 検出済みバグ修正データを正解として重み最適化が可能 |
+| **B（中）** | トレンド分析 | 運用が定着してからで良い |
+| **B（中）** | JIT経験メトリクス | 有用だが実装コストが高め |
+| **B（中）** | 重複変更除去 | ノイズ対策として有用 |
+| **C（低）** | パフォーマンス最適化 | 大規模リポジトリ対応時 |
 
 ---
 
 ## 実装フェーズ
 
-### ✅ Phase 1: 基盤移植（完了）
-1. ✅ 設定システム（`config/config.go`）
-2. ✅ Git Reader 拡張（`internal/git/reader.go`, `models.go`）
-3. ✅ 正規化サービス（`internal/scoring/normalization.go`）
-4. ✅ ファイルメトリクス集約（`internal/aggregation/file_metrics.go`）
-5. ✅ バーストスコア計算（`internal/burst/sliding_window.go`）
-6. ✅ ファイルリスクスコアラー（`internal/scoring/file_scorer.go`）
-
-### ✅ Phase 2: JIT コミット分析（完了）
-1. ✅ Shannon エントロピー（`internal/entropy/shannon.go`）
-2. ✅ コミットメトリクス計算（`internal/aggregation/commit_metrics.go`）
-3. ✅ コミットリスクスコアラー（`internal/scoring/commit_scorer.go`）
-4. ✅ commits コマンド（`cmd/commits.go`）
-
-### ✅ Phase 3: Change Coupling 分析（完了）
-1. ✅ Change Coupling Analyzer（`internal/coupling/analyzer.go`）
-2. ✅ coupling コマンド（`cmd/coupling.go`）
-3. ✅ 出力形式（Console, JSON, CSV, Markdown）
-
-### Phase 4: 精度と実用性の根本改善（次期優先）
-1. バグ修正コミット検出（`internal/bugfix/detector.go`）
-2. Bugfix メトリクスのスコアリング統合
-3. 差分モード実装（`--diff` オプション）
-4. CI連携用出力形式
-
-### Phase 5: 精度向上
+### Phase 5: 精度向上（次期優先）
 1. ファイル複雑度メトリクス追加
 2. スコアキャリブレーション（`calibrate` コマンド）
-3. トレンド分析（`--compare-with` オプション）
 
 ### Phase 6: 運用改善
-1. JIT経験メトリクス拡張
-2. 重複変更検出ロジック
-3. リネーム追跡オプション
+1. トレンド分析（`--compare-with` オプション）
+2. JIT経験メトリクス拡張
+3. 重複変更検出ロジック
 
 ### Phase 7: パフォーマンス最適化
 1. インクリメンタル分析（キャッシュ）
