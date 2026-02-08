@@ -15,11 +15,7 @@ go build -o bugspots-go .
 
 ### Run the tool
 ```bash
-# Subcommand-based usage (v2)
 ./bugspots-go <command> [flags]
-
-# Legacy usage (backward compatible)
-./bugspots-go [flags] /path/to/git/repo
 ```
 
 ### Common usage examples
@@ -42,16 +38,6 @@ go build -o bugspots-go .
 # Score weight calibration
 ./bugspots-go calibrate --repo /path/to/repo --since 2025-01-01
 ./bugspots-go calibrate --repo /path/to/repo --top-percent 30
-
-# Legacy scan mode (original bugspots behavior)
-./bugspots-go scan /path/to/repo
-./bugspots-go scan -b develop /path/to/repo
-./bugspots-go scan -w "fixes,closed,resolved" /path/to/repo
-./bugspots-go scan -r "fix(es|ed)?" /path/to/repo
-./bugspots-go scan --display-timestamps /path/to/repo
-
-# Backward-compatible legacy invocation (no subcommand)
-./bugspots-go /path/to/repo
 ```
 
 ### Run tests
@@ -90,21 +76,19 @@ gofmt -l .
 
 ## Architecture
 
-The project uses a modular architecture with five CLI commands backed by internal packages.
+The project uses a modular architecture with four CLI commands backed by internal packages.
 
 ### app.go - Entry Point
 - Minimal entry point that delegates to `cmd.App()`
-- Adds legacy scan flags to the root command for backward compatibility
 
 ### cmd/ - Command Definitions
 Each command is defined in its own file:
 
-- **root.go** - Defines the CLI app structure with `urfave/cli/v2`, common flags, config loading, output format parsing, and legacy action handler
+- **root.go** - Defines the CLI app structure with `urfave/cli/v2`, common flags, config loading, and output format parsing
 - **analyze.go** - `analyze` command: multi-factor file hotspot analysis (commit frequency, churn, recency, burst, ownership, bugfix, complexity). Supports `--diff` for PR/CI integration, `--ci-threshold` for automated gating, and `--include-complexity` for file size scoring
 - **commits.go** - `commits` command: JIT defect prediction scoring individual commits by diffusion, size, and entropy. Supports `--risk-level` filtering
 - **coupling.go** - `coupling` command: file change coupling analysis using Jaccard coefficient with configurable thresholds
 - **calibrate.go** - `calibrate` command: weight calibration using historical bugfix data. Optimizes scoring weights via coordinate descent to maximize detection rate
-- **scan.go** - `scan` command: legacy bugspots mode preserving the original CLI interface. Contains `convertToRegex()`, `getFixes()`, and `showScanResult()`
 - **context.go** - `CommandContext` struct encapsulating shared setup logic (config, date parsing, Git reader initialization) used by all commands
 
 ### internal/ - Core Packages
@@ -112,7 +96,6 @@ Each command is defined in its own file:
 - **internal/git/** - Git CLI interface (replaced go-git library). `HistoryReader` reads commit history via `git log` with numstat/raw output. Supports branch selection, date range filtering, rename detection, and file include/exclude glob patterns
 - **internal/bugfix/** - Pattern-based bugfix commit detection using configurable regex patterns
 - **internal/scoring/** - Scoring algorithms:
-  - `legacy.go` - Original sigmoid-based temporal scoring: `1 / (1 + exp((-12*t)+12))`
   - `file_scorer.go` - Multi-factor weighted file risk scoring (7 factors including complexity)
   - `commit_scorer.go` - JIT commit risk scoring (diffusion, size, entropy)
   - `normalization.go` - Score normalization utilities (min-max, logarithmic, recency decay, clamping)
@@ -128,14 +111,13 @@ Each command is defined in its own file:
 
 ### config/ - Configuration
 - JSON-based configuration via `.bugspots.json` files (project root or home directory)
-- Configurable scoring weights, bugfix patterns, coupling thresholds, and legacy settings
+- Configurable scoring weights, bugfix patterns, and coupling thresholds
 - CLI flags override config file values
 
 ## Key Data Structures
 
 - **git.CommitChangeSet** - A commit with its associated file changes (path, lines added/deleted, change kind)
 - **git.FileChange** - Individual file change within a commit (path, old path for renames, added/deleted lines, change kind)
-- **scoring.LegacyFix** - Represents a detected bugfix commit in legacy mode (message, timestamp, list of modified files)
 - **scoring.FileRiskItem** - File risk result with score and optional breakdown
 - **scoring.CommitRiskItem** - Commit risk result with score, risk level, and optional breakdown
 - **aggregation.FileMetrics** - Accumulated per-file metrics across all commits
@@ -146,10 +128,9 @@ Each command is defined in its own file:
 The test suite includes 23 test files across all packages with 90+ test functions and 280+ test cases. See [TESTS.md](docs/TESTS.md) for detailed test documentation.
 
 ### Key test areas:
-- **cmd/** - `convertToRegex()` conversion and regex validation
 - **config/** - Configuration defaults and risk level classification
 - **internal/git/** - Git CLI output parsing, branch handling, filters, diff parsing, benchmarks
-- **internal/scoring/** - Legacy sigmoid, file scoring, commit scoring, normalization
+- **internal/scoring/** - File scoring, commit scoring, normalization
 - **internal/aggregation/** - File and commit metrics aggregation, rename handling
 - **internal/bugfix/** - Pattern detection and bugfix identification
 - **internal/output/** - Output format writers and helpers

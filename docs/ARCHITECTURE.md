@@ -32,8 +32,7 @@ bugspots-go/
 │   ├── analyze.go                # 6-factor file hotspot analysis
 │   ├── commits.go                # JIT commit risk analysis
 │   ├── coupling.go               # File change coupling analysis
-│   ├── scan.go                   # Legacy bugspots compatibility
-│   └── scan_test.go
+│   └── calibrate.go              # Score weight calibration
 │
 ├── config/                       # Configuration management
 │   ├── config.go                 # Config structs, loading, defaults
@@ -56,7 +55,6 @@ bugspots-go/
 │   ├── scoring/                  # Risk scoring algorithms
 │   │   ├── file_scorer.go        # 6-factor weighted file risk scoring
 │   │   ├── commit_scorer.go      # JIT commit risk scoring
-│   │   ├── legacy.go             # Original sigmoid-based scoring
 │   │   └── normalization.go      # NormLog, NormMinMax, RecencyDecay, Clamp
 │   │
 │   ├── bugfix/                   # Bugfix commit detection
@@ -97,14 +95,11 @@ bugspots-go/
 ```go
 func main() {
     app := cmd.App()
-    app.Flags = append(app.Flags, cmd.LegacyScanFlags()...)
     if err := app.Run(os.Args); err != nil {
         log.Fatal(err)
     }
 }
 ```
-
-Legacy scan flags are appended to the root command to support backward-compatible invocation without a subcommand (e.g., `./bugspots-go /path/to/repo`).
 
 ---
 
@@ -114,9 +109,8 @@ The CLI is built with `urfave/cli/v2`. Each command is defined in its own file.
 
 ### root.go
 
-- `App()` creates the CLI application and registers the four subcommands
+- `App()` creates the CLI application and registers subcommands
 - `commonFlags()` returns flags shared across commands (`--repo`, `--since`, `--until`, `--format`, `--output`, `--explain`, `--top`)
-- `legacyAction()` handles invocation without a subcommand for backward compatibility
 - Utility functions: `parseDateFlag()`, `getOutputFormat()`, `loadConfig()`
 
 ### context.go
@@ -138,7 +132,7 @@ Helper methods: `HasCommits()`, `PrintNoCommitsMessage()`, `LogCompletion()`.
 | `analyze.go` | `analyze` | 6-factor file hotspot analysis. Supports `--diff` for PR/CI and `--ci-threshold` for quality gates |
 | `commits.go` | `commits` | JIT defect prediction scoring individual commits |
 | `coupling.go` | `coupling` | File change coupling analysis using Jaccard coefficient |
-| `scan.go` | `scan` | Legacy bugspots mode with original CLI interface |
+| `calibrate.go` | `calibrate` | Score weight calibration using historical bugfix data |
 
 ---
 
@@ -170,7 +164,6 @@ Risk scoring algorithms that transform metrics into `[0, 1]` risk scores.
 
 - **`FileScorer`** applies 6-factor weighted scoring: commit frequency, churn, recency, burst, ownership dispersion, bugfix count
 - **`CommitScorer`** applies 3-factor weighted scoring: diffusion, size, entropy. Classifies results into risk levels (high / medium / low)
-- **`CalcScore()`** implements the legacy sigmoid: `1 / (1 + exp(-12t + 12))`
 - **Normalization utilities**: `NormLog()`, `NormMinMax()`, `RecencyDecay()`, `Clamp()`
 
 See [SCORING.md](SCORING.md) for formula details.
@@ -217,7 +210,6 @@ type Config struct {
     CommitScoring CommitScoringConfig // Commit risk weights & thresholds
     Coupling      CouplingConfig      // Min co-commits, Jaccard threshold
     Filters       FilterConfig        // Include/exclude glob patterns
-    Legacy        LegacyConfig        // Legacy scan defaults
 }
 ```
 
@@ -362,28 +354,6 @@ Coupling Analyzer
         │
         ▼
   CouplingReportWriter ──► output
-```
-
-### scan (legacy)
-
-```
-[]CommitChangeSet (paths only)
-  │
-  ▼
-Regex-based bugfix detection
-  ├── Match commit messages against pattern
-  └── Extract files from matching commits
-        │
-        ▼
-  []LegacyFix
-        │
-        ▼
-  Sigmoid scoring: 1 / (1 + exp(-12t + 12))
-  ├── Normalize timestamps to [0, 1]
-  └── Sum scores per file
-        │
-        ▼
-  Sorted hotspot list ──► console output
 ```
 
 ---

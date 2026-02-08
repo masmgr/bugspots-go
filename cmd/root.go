@@ -21,7 +21,6 @@ func App() *cli.App {
 			CommitsCmd(),
 			CouplingCmd(),
 			CalibrateCmd(),
-			ScanCmd(),
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -30,7 +29,9 @@ func App() *cli.App {
 				Usage:   "Path to configuration file",
 			},
 		},
-		Action: legacyAction,
+		Action: func(c *cli.Context) error {
+			return cli.ShowAppHelp(c)
+		},
 	}
 }
 
@@ -138,19 +139,6 @@ func loadConfig(c *cli.Context) (*config.Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// legacyAction handles the default (legacy) command behavior.
-// When a repository path is provided as an argument, it runs the scan command.
-func legacyAction(c *cli.Context) error {
-	// If no args and no subcommand, show help
-	if c.NArg() == 0 {
-		return cli.ShowAppHelp(c)
-	}
-
-	// Legacy mode: treat first arg as repo path and run scan
-	// This maintains backward compatibility with the original bugspots CLI
-	return ScanCmd().Action(c)
 }
 
 // Run executes the CLI application.

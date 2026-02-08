@@ -88,15 +88,6 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Coupling.TopPairs != 50 {
 		t.Errorf("Coupling.TopPairs = %d, expected 50", cfg.Coupling.TopPairs)
 	}
-	if cfg.Legacy.AnalysisWindowYears != 3 {
-		t.Errorf("Legacy.AnalysisWindowYears = %d, expected 3", cfg.Legacy.AnalysisWindowYears)
-	}
-	if cfg.Legacy.MaxHotspots != 100 {
-		t.Errorf("Legacy.MaxHotspots = %d, expected 100", cfg.Legacy.MaxHotspots)
-	}
-	if cfg.Legacy.DefaultBranch != "HEAD" {
-		t.Errorf("Legacy.DefaultBranch = %q, expected %q", cfg.Legacy.DefaultBranch, "HEAD")
-	}
 }
 
 func TestDefaultConfig_WeightsSum(t *testing.T) {

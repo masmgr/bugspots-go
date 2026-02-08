@@ -29,9 +29,6 @@ Detects file pairs that frequently change together, indicating hidden dependenci
 - **Confidence**: Probability that file B changes when file A changes
 - **Lift**: How much more likely files change together than by chance
 
-### Legacy Bugspots Mode
-The original bugspots algorithm using sigmoid-weighted scoring of bugfix commits.
-
 ## Installation
 
 ### Build from source
@@ -129,25 +126,6 @@ go build -o bugspots-go .
 #     "exclude": ["**/vendor/**", "**/testdata/**"]
 #   }
 # }
-```
-
-### Legacy Mode (Original Bugspots)
-
-```bash
-# Scan current HEAD with default bugfix indicators
-./bugspots-go /path/to/repo
-
-# Scan specific branch
-./bugspots-go -b develop /path/to/repo
-
-# Use custom bugfix indicator words
-./bugspots-go -w "fixes,closed,resolved" /path/to/repo
-
-# Use custom regex pattern for bugfix detection
-./bugspots-go -r "fix(es|ed)?" /path/to/repo
-
-# Show timestamps of identified fix commits
-./bugspots-go --display-timestamps /path/to/repo
 ```
 
 ## CLI Options
@@ -410,13 +388,13 @@ go fmt ./...
 
 ```
 bugspots-go/
-├── app.go                      # Entry point (legacy mode support)
-├── bugspots.go                 # Legacy bugspots algorithm
+├── app.go                      # Entry point
 ├── cmd/
 │   ├── root.go                 # CLI configuration, common flags
 │   ├── analyze.go              # File hotspot analysis command
 │   ├── commits.go              # JIT commit risk analysis command
-│   └── coupling.go             # Change coupling analysis command
+│   ├── coupling.go             # Change coupling analysis command
+│   └── calibrate.go            # Score weight calibration command
 ├── config/
 │   └── config.go               # Configuration structures
 ├── internal/

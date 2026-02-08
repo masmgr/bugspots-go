@@ -228,7 +228,7 @@ Lift = P(A,B) / (P(A) × P(B))
 ### アーキテクチャ
 
 ```
-app.go                        # エントリポイント（レガシーフラグ付加）
+app.go                        # エントリポイント
 
 cmd/                          # CLI コマンド
 ├── root.go                   # 共通フラグ、App 設定、出力形式解析
@@ -236,7 +236,7 @@ cmd/                          # CLI コマンド
 ├── analyze.go                # 6要素 File Hotspot 分析
 ├── commits.go                # JIT Commit Risk 分析
 ├── coupling.go               # Change Coupling 分析
-└── scan.go                   # レガシー bugspots モード
+└── calibrate.go              # スコア重みキャリブレーション
 
 internal/
 ├── git/
@@ -245,7 +245,6 @@ internal/
 │   ├── models.go             # CommitChangeSet, FileChange, ReadOptions
 │   └── diff.go               # 差分ファイル取得（--diff 用）
 ├── scoring/
-│   ├── legacy.go             # オリジナル sigmoid ベーススコアリング
 │   ├── normalization.go      # NormLog, RecencyDecay, Clamp
 │   ├── file_scorer.go        # 6要素ファイルリスクスコアリング
 │   └── commit_scorer.go      # JIT コミットリスクスコアリング
@@ -501,12 +500,6 @@ JIT_Score = w1×Diffusion + w2×Size + w3×Entropy +
     "include": ["src/**", "apps/**"],
     "exclude": ["**/vendor/**", "**/testdata/**"]
   },
-  "legacy": {
-    "analysisWindowYears": 3,
-    "maxHotspots": 100,
-    "defaultBranch": "HEAD",
-    "defaultBugfixRegex": "\\b(fix(es|ed)?|close(s|d)?)\\b"
-  }
 }
 ```
 

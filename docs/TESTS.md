@@ -18,7 +18,7 @@ The project employs three types of tests.
 
 | Type | Purpose | Examples |
 |------|---------|----------|
-| Unit tests | Verify correctness of individual functions and methods | `TestConvertToRegex`, `TestClamp` |
+| Unit tests | Verify correctness of individual functions and methods | `TestClamp`, `TestNormLog` |
 | Integration tests | Validate behavior with real Git CLI and repositories | `TestReadDiff_Integration`, `TestHistoryReader_ReadChanges_RespectsBranch` |
 | Benchmarks | Measure performance characteristics | `BenchmarkHistoryReader_ReadChanges_Full` |
 
@@ -134,7 +134,6 @@ go test -v ./cmd/...
 
 | Package | Test File(s) | Test Functions |
 |---------|-------------|----------------|
-| cmd | scan_test.go | 4 |
 | config | config_test.go | 3 |
 | internal/aggregation | file_metrics_test.go, commit_metrics_test.go | 17 |
 | internal/bugfix | detector_test.go | 10 |
@@ -143,23 +142,12 @@ go test -v ./cmd/...
 | internal/entropy | shannon_test.go | 6 |
 | internal/git | 7 test files | 16 + 6 benchmarks |
 | internal/output | 3 test files | 9 |
-| internal/scoring | 4 test files | 21 |
+| internal/scoring | 3 test files | 16 |
 | (root) | testhelpers_test.go | 4 helpers |
 
 ## Test Files by Package
 
-### 1. `cmd/scan_test.go` - CLI Argument Processing
-
-Tests for the `convertToRegex()` function in the scan command.
-
-| Test Function | Purpose | Cases |
-|---------------|---------|-------|
-| TestConvertToRegex | Conversion of comma-separated words to regex alternation | 5 |
-| TestConvertToRegex_RegexValidity | Output compiles as valid regex via `regexp.Compile()` | 3 |
-| TestConvertToRegex_RegexMatching | Converted patterns match expected strings | 3 |
-| TestConvertToRegex_EdgeCases | Boundary conditions (trailing/leading/multiple commas) | 4 |
-
-### 2. `config/config_test.go` - Configuration
+### 1. `config/config_test.go` - Configuration
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
@@ -167,7 +155,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestDefaultConfig | Validates all default configuration values | 15 |
 | TestDefaultConfig_WeightsSum | File and commit scoring weights each sum to 1.0 | 2 |
 
-### 3. `internal/aggregation/file_metrics_test.go` - File Metrics
+### 2. `internal/aggregation/file_metrics_test.go` - File Metrics
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
@@ -185,7 +173,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestApplyBugfixCounts / WithRenames | Applying bugfix counts to file metrics | 2 |
 | TestMergeMetrics_BugfixCount | Bugfix count merging | 1 |
 
-### 4. `internal/aggregation/commit_metrics_test.go` - Commit Metrics
+### 3. `internal/aggregation/commit_metrics_test.go` - Commit Metrics
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
@@ -193,7 +181,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestExtractPathComponents | Path parsing into directory and subsystem components | 6 |
 | TestTruncateMessage | Message truncation to 100 chars (including LF/CRLF) | 6 |
 
-### 5. `internal/bugfix/detector_test.go` - Bugfix Detection
+### 4. `internal/bugfix/detector_test.go` - Bugfix Detection
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
@@ -207,7 +195,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestDetect_NoPatterns / EmptyChangeSets | Edge cases in detection | 2 |
 | TestDetect_MultiplePatterns | Varying pattern counts | 3 |
 
-### 6. `internal/burst/sliding_window_test.go` - Burst Detection
+### 5. `internal/burst/sliding_window_test.go` - Burst Detection
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
@@ -217,7 +205,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestIsSortedDescending | Sort order detection (descending) | 6 |
 | TestReverse | Slice reversal | 3 |
 
-### 7. `internal/coupling/analyzer_test.go` - Coupling Analysis
+### 6. `internal/coupling/analyzer_test.go` - Coupling Analysis
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
@@ -225,13 +213,13 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestNewFilePair_Symmetry | Pair symmetry (A,B == B,A) | 3 |
 | TestAnalyzer_Analyze_* | Empty input, single-file commits, perfect/partial coupling, min co-commits/Jaccard filters, max files filter, deleted files, top pairs limit, sorting | 10 |
 
-### 8. `internal/entropy/shannon_test.go` - Entropy
+### 7. `internal/entropy/shannon_test.go` - Entropy
 
 | Test Function | Purpose | Cases |
 |---------------|---------|-------|
 | TestCalculateCommitEntropy_* | Shannon entropy: empty, single file, uniform/skewed distribution, zero churn, bounded range | 12+ |
 
-### 9. `internal/git/` - Git Interface (7 files)
+### 8. `internal/git/` - Git Interface (7 files)
 
 **diff_test.go**
 
@@ -279,7 +267,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestParseGitRawAndNumstat_RenameAndModify | Parsing git raw+numstat output for modified and renamed files | 1 |
 | TestKindFromGitStatus | Git status code mapping (A/M/D/R100) | 4 |
 
-### 10. `internal/output/` - Output Formats (3 files)
+### 9. `internal/output/` - Output Formats (3 files)
 
 **ci_test.go**
 
@@ -305,17 +293,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestGetRiskLevelEmoji | Emoji assignment for risk levels | 5 |
 | TestEscapeMarkdown | Markdown character escaping | 7 |
 
-### 11. `internal/scoring/` - Scoring Algorithms (4 files)
-
-**legacy_test.go**
-
-| Test Function | Purpose | Cases |
-|---------------|---------|-------|
-| TestLegacySigmoidScore | Sigmoid scoring at different time positions (t=0, 1, ~0.667, ~0.333) | 4 |
-| TestLegacySigmoidScore_SigmoidProperties | Recent fixes score higher than older fixes | 1 |
-| TestCalculateLegacyHotspots | Hotspot calculation from fix data | 1 |
-| TestRankLegacyHotspots | Ranking by score (descending) | 1 |
-| TestRankLegacyHotspots_MaxSpots | maxSpots limit | 1 |
+### 10. `internal/scoring/` - Scoring Algorithms (3 files)
 
 **file_scorer_test.go**
 
@@ -345,7 +323,7 @@ Tests for the `convertToRegex()` function in the scan command.
 | TestRecencyDecay | Exponential decay with half-life | 7+ |
 | TestRecencyDecay_MonotonicDecrease | Monotonic decrease | 1 |
 
-### 12. `testhelpers_test.go` - Root-Level Test Utilities
+### 11. `testhelpers_test.go` - Root-Level Test Utilities
 
 | Helper Function | Purpose |
 |-----------------|---------|

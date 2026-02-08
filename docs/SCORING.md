@@ -9,12 +9,11 @@ bugspots-go v2 provides three analysis capabilities: file hotspot analysis, comm
 1. [File Hotspot Analysis (analyze)](#1-file-hotspot-analysis-analyze)
 2. [JIT Commit Risk Analysis (commits)](#2-jit-commit-risk-analysis-commits)
 3. [File Coupling Analysis (coupling)](#3-file-coupling-analysis-coupling)
-4. [Legacy Scan (scan)](#4-legacy-scan-scan)
-5. [Normalization Methods](#5-normalization-methods)
-6. [Burst Detection](#6-burst-detection)
-7. [Shannon Entropy](#7-shannon-entropy)
-8. [Bugfix Commit Detection](#8-bugfix-commit-detection)
-9. [Configuration Reference](#9-configuration-reference)
+4. [Normalization Methods](#4-normalization-methods)
+5. [Burst Detection](#5-burst-detection)
+6. [Shannon Entropy](#6-shannon-entropy)
+7. [Bugfix Commit Detection](#7-bugfix-commit-detection)
+8. [Configuration Reference](#8-configuration-reference)
 
 ---
 
@@ -192,37 +191,7 @@ lift(A, B) = P(A, B) / (P(A) × P(B))
 
 ---
 
-## 4. Legacy Scan (scan)
-
-Backward-compatible mode with the original bugspots algorithm, executed by the `bugspots-go scan` command.
-
-### Sigmoid Score
-
-Weights time using a sigmoid function, assigning higher scores to more recent bugfixes.
-
-```
-score = 1 / (1 + exp(-12t + 12))
-```
-
-Where `t` is a normalized time value in `[0, 1]`:
-
-```
-t = 1 - (currentDate - fixDate) / (currentDate - oldestDate)
-```
-
-| t Value | Meaning | Score (approx.) |
-|---------|---------|----------------|
-| 0.0 | Oldest commit | ≈ 0.000006 |
-| 0.5 | Midpoint | ≈ 0.0025 |
-| 0.8 | Fairly recent | ≈ 0.12 |
-| 0.9 | Recent | ≈ 0.50 |
-| 1.0 | Present | ≈ 1.00 |
-
-The final score for a file is the sum of scores from all bugfix commits associated with that file.
-
----
-
-## 5. Normalization Methods
+## 4. Normalization Methods
 
 All scoring components are normalized to the `[0, 1]` range.
 
@@ -262,7 +231,7 @@ clamp(x) = max(0.0, min(1.0, x))
 
 ---
 
-## 6. Burst Detection
+## 5. Burst Detection
 
 Detects whether commits to a file are concentrated within a specific time period.
 
@@ -294,7 +263,7 @@ BurstScore = maxCommitsInWindow / totalCommits
 
 ---
 
-## 7. Shannon Entropy
+## 6. Shannon Entropy
 
 Measures how evenly changes are distributed across files within a commit.
 
@@ -324,11 +293,11 @@ For a commit modifying 4 files (maximum entropy = log₂(4) = 2.0):
 
 ---
 
-## 8. Bugfix Commit Detection
+## 7. Bugfix Commit Detection
 
 Bugfix commits are identified by matching commit messages against specific patterns.
 
-### Default Patterns (analyze / commits commands)
+### Default Patterns
 
 | Pattern | Matches |
 |---------|---------|
@@ -337,19 +306,13 @@ Bugfix commits are identified by matching commit messages against specific patte
 | `\bhotfix\b` | hotfix |
 | `\bpatch\b` | patch |
 
-### Legacy Patterns (scan command)
-
-| Pattern | Matches |
-|---------|---------|
-| `\b(fix(es\|ed)?\|close(s\|d)?)\b` | fix, fixed, fixes, close, closes, closed |
-
 All patterns are case-insensitive (`(?i)` flag).
 
 Custom patterns can be defined in the `.bugspots.json` configuration file.
 
 ---
 
-## 9. Configuration Reference
+## 8. Configuration Reference
 
 All settings can be overridden via the `.bugspots.json` file or command-line flags.
 
@@ -389,15 +352,6 @@ All settings can be overridden via the `.bugspots.json` file or command-line fla
 | `coupling.minJaccardThreshold` | 0.1 | Minimum Jaccard coefficient |
 | `coupling.maxFilesPerCommit` | 50 | Maximum files per commit |
 | `coupling.topPairs` | 50 | Maximum number of pairs to display |
-
-### Legacy Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `legacy.analysisWindowYears` | 3 | Analysis window (years) |
-| `legacy.maxHotspots` | 100 | Maximum number of hotspots to display |
-| `legacy.defaultBranch` | `"HEAD"` | Default branch |
-| `legacy.defaultBugfixRegex` | `\b(fix(es\|ed)?\|close(s\|d)?)\b` | Bugfix detection pattern |
 
 ---
 

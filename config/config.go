@@ -14,20 +14,11 @@ type Config struct {
 	CommitScoring CommitScoringConfig `json:"commitScoring"`
 	Coupling      CouplingConfig      `json:"coupling"`
 	Filters       FilterConfig        `json:"filters"`
-	Legacy        LegacyConfig        `json:"legacy"`
 }
 
 // BugfixConfig holds bugfix detection configuration.
 type BugfixConfig struct {
 	Patterns []string `json:"patterns"` // Regex patterns for bugfix commit detection
-}
-
-// LegacyConfig holds configuration for legacy bugspots scan mode.
-type LegacyConfig struct {
-	AnalysisWindowYears int    `json:"analysisWindowYears"` // Default: 3
-	MaxHotspots         int    `json:"maxHotspots"`         // Default: 100
-	DefaultBranch       string `json:"defaultBranch"`       // Default: "HEAD"
-	DefaultBugfixRegex  string `json:"defaultBugfixRegex"`  // Default: \b(fix(es|ed)?|close(s|d)?)\b
 }
 
 // ScoringConfig holds file hotspot scoring configuration.
@@ -155,12 +146,6 @@ func DefaultConfig() *Config {
 		Filters: FilterConfig{
 			Include: []string{},
 			Exclude: []string{},
-		},
-		Legacy: LegacyConfig{
-			AnalysisWindowYears: 3,
-			MaxHotspots:         100,
-			DefaultBranch:       "HEAD",
-			DefaultBugfixRegex:  `\b(fix(es|ed)?|close(s|d)?)\b`,
 		},
 	}
 }
