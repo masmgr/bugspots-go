@@ -27,6 +27,12 @@ go build -o bugspots-go .
 ./bugspots-go analyze --repo /path/to/repo --diff origin/main...HEAD
 ./bugspots-go analyze --repo /path/to/repo --include-complexity --explain
 
+# Filter by file extension (Go source only)
+./bugspots-go analyze --repo /path/to/repo --include "**/*.go" --exclude "**/*_test.go"
+
+# Filter by directory (multiple packages)
+./bugspots-go analyze --repo /path/to/repo --include "src/**" --include "internal/**"
+
 # JIT commit risk analysis
 ./bugspots-go commits --repo /path/to/repo
 ./bugspots-go commits --repo /path/to/repo --risk-level high

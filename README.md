@@ -115,17 +115,88 @@ go build -o bugspots-go .
 
 ### Filtering Files
 
-```bash
-# Include only specific paths (in config file)
-./bugspots-go analyze --config config.json
+You can filter which files to analyze using glob patterns, either via CLI flags or configuration file.
 
-# Example config.json with filters:
-# {
-#   "filters": {
-#     "include": ["src/**", "apps/**"],
-#     "exclude": ["**/vendor/**", "**/testdata/**"]
-#   }
-# }
+#### Using CLI Flags
+
+```bash
+# Include only Go source files (excluding tests)
+./bugspots-go analyze --include "**/*.go" --exclude "**/*_test.go"
+
+# Analyze specific directories
+./bugspots-go analyze --include "src/**" --include "apps/**"
+
+# Exclude common non-source files
+./bugspots-go analyze --exclude "**/vendor/**" --exclude "**/node_modules/**"
+
+# Exclude generated files by extension
+./bugspots-go analyze --exclude "**/*.pb.go" --exclude "**/*.gen.go" --exclude "**/*.min.js"
+
+# Combine include and exclude
+./bugspots-go analyze --repo /path/to/repo \
+  --include "src/**" --include "internal/**" \
+  --exclude "**/testdata/**" --exclude "**/*_mock.go"
+```
+
+#### Using Configuration File
+
+Create a `.bugspots.json` file in your project root or home directory:
+
+```json
+{
+  "filters": {
+    "include": ["src/**", "apps/**", "internal/**"],
+    "exclude": [
+      "**/vendor/**",
+      "**/node_modules/**",
+      "**/testdata/**",
+      "**/*.min.js",
+      "**/*.pb.go"
+    ]
+  }
+}
+```
+
+Then run with config:
+```bash
+./bugspots-go analyze --config .bugspots.json
+```
+
+**Note**: CLI flags override config file settings.
+
+#### Pattern Syntax
+
+Powered by [doublestar/v4](https://github.com/bmatcuk/doublestar), supporting rich glob patterns:
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `**/*.ext` | Files with extension anywhere | `**/*.go`, `**/*.js` |
+| `dir/**` | All files under directory | `src/**`, `apps/**` |
+| `**/name/**` | Directory anywhere | `**/vendor/**`, `**/testdata/**` |
+| `*` | Any characters (except `/`) | `src/*.go` (single level) |
+| `?` | Single character | `file?.go` |
+| `{a,b}` | Alternatives | `**/*.{js,ts}` |
+
+#### Filter Priority
+
+- **Exclude takes precedence**: If a file matches any exclude pattern, it's skipped
+- **Include empty = all files**: If no include patterns specified, all non-excluded files are included
+- **Include specified = allowlist**: If include patterns exist, only matching files are included
+
+#### Common Use Cases
+
+```bash
+# Go projects: analyze source code only
+./bugspots-go analyze --include "**/*.go" --exclude "**/*_test.go" --exclude "**/vendor/**"
+
+# JavaScript projects: exclude minified and dependencies
+./bugspots-go analyze --include "src/**" --exclude "**/*.min.js" --exclude "**/node_modules/**"
+
+# Monorepo: specific packages only
+./bugspots-go analyze --include "packages/core/**" --include "packages/api/**"
+
+# Exclude generated code
+./bugspots-go analyze --exclude "**/*.pb.go" --exclude "**/*.gen.go" --exclude "**/mocks/**"
 ```
 
 ## CLI Options
@@ -144,6 +215,8 @@ go build -o bugspots-go .
 | `--output <PATH>` | `-o` | Output file path | stdout |
 | `--explain` | `-e` | Include score breakdown | false |
 | `--config <PATH>` | `-c` | Configuration file path | .bugspots.json |
+| `--include <PATTERN>` | | Glob patterns to include (repeatable) | All files |
+| `--exclude <PATTERN>` | | Glob patterns to exclude (repeatable) | None |
 
 ### `analyze` Command Options
 
@@ -204,7 +277,12 @@ Create a `.bugspots.json` or specify with `--config`:
   },
   "filters": {
     "include": ["src/**", "apps/**"],
-    "exclude": ["**/vendor/**", "**/testdata/**", "**/*.min.js"]
+    "exclude": [
+      "**/vendor/**",
+      "**/testdata/**",
+      "**/*.min.js",
+      "**/*.pb.go"
+    ]
   }
 }
 ```
