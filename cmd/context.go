@@ -14,7 +14,7 @@ import (
 	"github.com/masmgr/bugspots-go/internal/output"
 )
 
-func parseRenameDetectFlag(s string, detail git.ChangeDetailLevel) (git.RenameDetectMode, error) {
+func parseRenameDetectFlag(s string) (git.RenameDetectMode, error) {
 	normalized := strings.ToLower(strings.TrimSpace(s))
 
 	switch normalized {
@@ -29,7 +29,6 @@ func parseRenameDetectFlag(s string, detail git.ChangeDetailLevel) (git.RenameDe
 	case "aggressive", "similar", "similarity":
 		return git.RenameDetectAggressive, nil
 	default:
-		_ = detail // reserved for potential future auto-tuning
 		return git.RenameDetectAggressive, fmt.Errorf("invalid --rename-detect %q (expected auto|off|simple|aggressive)", s)
 	}
 }
@@ -84,7 +83,7 @@ func NewCommandContextWithGitDetail(c *cli.Context, detail git.ChangeDetailLevel
 	repoPath := c.String("repo")
 	branch := c.String("branch")
 
-	renameDetect, err := parseRenameDetectFlag(c.String("rename-detect"), detail)
+	renameDetect, err := parseRenameDetectFlag(c.String("rename-detect"))
 	if err != nil {
 		return nil, err
 	}

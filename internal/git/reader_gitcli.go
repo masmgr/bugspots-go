@@ -183,9 +183,7 @@ func splitHeaderBody(rec []byte) (header []byte, body []byte) {
 
 func parseGitRawEntries(body []byte) ([]gitRawEntry, int, error) {
 	i := 0
-	for i < len(body) && (body[i] == '\n' || body[i] == '\r') {
-		i++
-	}
+	skipLineBreaks(body, &i)
 
 	entries := make([]gitRawEntry, 0, 128)
 
@@ -218,7 +216,7 @@ func parseGitRawEntries(body []byte) ([]gitRawEntry, int, error) {
 
 		path := path1
 		oldPath := ""
-		if len(status) > 0 && (status[0] == 'R' || status[0] == 'C') {
+		if isRenameOrCopyStatus(status) {
 			path2, ok := readStringUntilNUL(body, &i)
 			if !ok {
 				return nil, 0, fmt.Errorf("unexpected git --raw format (missing rename path)")
@@ -243,9 +241,7 @@ func parseGitNumstat(body []byte, rawEntries []gitRawEntry) ([]gitNumstat, error
 	stats := make([]gitNumstat, 0, len(rawEntries))
 	i := 0
 	// Skip newlines separating --raw output from --numstat output.
-	for i < len(body) && (body[i] == '\n' || body[i] == '\r') {
-		i++
-	}
+	skipLineBreaks(body, &i)
 	for range rawEntries {
 		added, ok, err := readNumstatInt(body, &i, '\t')
 		if err != nil {
@@ -343,4 +339,14 @@ func readNumstatInt(b []byte, i *int, delim byte) (int, bool, error) {
 		return 0, true, fmt.Errorf("parse numstat int %q: %w", string(field), err)
 	}
 	return n, true, nil
+}
+
+func skipLineBreaks(b []byte, i *int) {
+	for *i < len(b) && (b[*i] == '\n' || b[*i] == '\r') {
+		(*i)++
+	}
+}
+
+func isRenameOrCopyStatus(status string) bool {
+	return len(status) > 0 && (status[0] == 'R' || status[0] == 'C')
 }

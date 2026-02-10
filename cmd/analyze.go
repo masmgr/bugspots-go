@@ -124,9 +124,7 @@ func analyzeAction(c *cli.Context) error {
 		}
 
 		// Output results
-		opts := OutputOptions(c)
-		writer := output.NewFileReportWriter(opts.Format)
-		if err := writer.Write(report, opts); err != nil {
+		if err := writeFileReport(c, report); err != nil {
 			return err
 		}
 

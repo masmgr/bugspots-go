@@ -11,10 +11,7 @@ type CSVFileWriter struct{}
 
 // Write outputs the file analysis report as CSV.
 func (w *CSVFileWriter) Write(report *FileAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
 	writer, file, err := createCSVWriter(options.OutputPath)
 	if err != nil {
@@ -44,7 +41,7 @@ func (w *CSVFileWriter) Write(report *FileAnalysisReport, options OutputOptions)
 			fmt.Sprintf("%d", item.Metrics.AddedLines),
 			fmt.Sprintf("%d", item.Metrics.DeletedLines),
 			fmt.Sprintf("%d", item.Metrics.ChurnTotal()),
-			item.Metrics.LastModifiedAt.Format("2006-01-02T15:04:05"),
+			item.Metrics.LastModifiedAt.Format(reportDateTimeLayout),
 			fmt.Sprintf("%d", item.Metrics.ContributorCount()),
 			fmt.Sprintf("%.6f", item.Metrics.BurstScore),
 			fmt.Sprintf("%.6f", item.Metrics.OwnershipRatio()),
@@ -76,10 +73,7 @@ type CSVCommitWriter struct{}
 
 // Write outputs the commit analysis report as CSV.
 func (w *CSVCommitWriter) Write(report *CommitAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
 	writer, file, err := createCSVWriter(options.OutputPath)
 	if err != nil {
@@ -104,7 +98,7 @@ func (w *CSVCommitWriter) Write(report *CommitAnalysisReport, options OutputOpti
 	for _, item := range items {
 		row := []string{
 			item.Metrics.SHA,
-			item.Metrics.When.Format("2006-01-02T15:04:05"),
+			item.Metrics.When.Format(reportDateTimeLayout),
 			item.Metrics.Author.Name,
 			item.Metrics.Message,
 			fmt.Sprintf("%.6f", item.RiskScore),
@@ -138,10 +132,7 @@ type CSVCouplingWriter struct{}
 
 // Write outputs the coupling analysis report as CSV.
 func (w *CSVCouplingWriter) Write(report *CouplingAnalysisReport, options OutputOptions) error {
-	couplings := report.Result.Couplings
-	if options.Top > 0 && options.Top < len(couplings) {
-		couplings = couplings[:options.Top]
-	}
+	couplings := limitTop(report.Result.Couplings, options.Top)
 
 	writer, file, err := createCSVWriter(options.OutputPath)
 	if err != nil {
@@ -180,12 +171,9 @@ func (w *CSVCouplingWriter) Write(report *CouplingAnalysisReport, options Output
 }
 
 func createCSVWriter(outputPath string) (*csv.Writer, *os.File, error) {
-	if outputPath != "" {
-		file, err := os.Create(outputPath)
-		if err != nil {
-			return nil, nil, err
-		}
-		return csv.NewWriter(file), file, nil
+	out, file, err := openOutputWriter(outputPath)
+	if err != nil {
+		return nil, nil, err
 	}
-	return csv.NewWriter(os.Stdout), nil, nil
+	return csv.NewWriter(out), file, nil
 }

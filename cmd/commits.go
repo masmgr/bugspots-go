@@ -59,9 +59,7 @@ func commitsAction(c *cli.Context) error {
 		}
 
 		// Output results
-		opts := OutputOptions(c)
-		writer := output.NewCommitReportWriter(opts.Format)
-		if err := writer.Write(report, opts); err != nil {
+		if err := writeCommitReport(c, report); err != nil {
 			return err
 		}
 

@@ -2,8 +2,6 @@ package output
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strings"
 )
 
@@ -12,12 +10,9 @@ type MarkdownFileWriter struct{}
 
 // Write outputs the file analysis report as Markdown.
 func (w *MarkdownFileWriter) Write(report *FileAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
-	out, file, err := createWriter(options.OutputPath)
+	out, file, err := openOutputWriter(options.OutputPath)
 	if err != nil {
 		return err
 	}
@@ -29,11 +24,8 @@ func (w *MarkdownFileWriter) Write(report *FileAnalysisReport, options OutputOpt
 	fmt.Fprintln(out, "# File Hotspot Analysis Results")
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "**Repository:** %s\n\n", report.RepoPath)
-	if report.Since != nil {
-		fmt.Fprintf(out, "**Period:** %s to %s\n\n", report.Since.Format("2006-01-02"), report.Until.Format("2006-01-02"))
-	} else {
-		fmt.Fprintf(out, "**Until:** %s\n\n", report.Until.Format("2006-01-02"))
-	}
+	label, value := dateRangeLabelAndValue(report.Since, report.Until)
+	fmt.Fprintf(out, "**%s:** %s\n\n", label, value)
 	fmt.Fprintf(out, "**Total Files Analyzed:** %d\n\n", len(report.Items))
 
 	// Table header
@@ -79,12 +71,9 @@ type MarkdownCommitWriter struct{}
 
 // Write outputs the commit analysis report as Markdown.
 func (w *MarkdownCommitWriter) Write(report *CommitAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
-	out, file, err := createWriter(options.OutputPath)
+	out, file, err := openOutputWriter(options.OutputPath)
 	if err != nil {
 		return err
 	}
@@ -96,11 +85,8 @@ func (w *MarkdownCommitWriter) Write(report *CommitAnalysisReport, options Outpu
 	fmt.Fprintln(out, "# Commit Risk Analysis Results")
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "**Repository:** %s\n\n", report.RepoPath)
-	if report.Since != nil {
-		fmt.Fprintf(out, "**Period:** %s to %s\n\n", report.Since.Format("2006-01-02"), report.Until.Format("2006-01-02"))
-	} else {
-		fmt.Fprintf(out, "**Until:** %s\n\n", report.Until.Format("2006-01-02"))
-	}
+	label, value := dateRangeLabelAndValue(report.Since, report.Until)
+	fmt.Fprintf(out, "**%s:** %s\n\n", label, value)
 	fmt.Fprintf(out, "**Total Commits Analyzed:** %d\n\n", len(report.Items))
 
 	// Table header
@@ -151,7 +137,7 @@ type MarkdownCouplingWriter struct{}
 func (w *MarkdownCouplingWriter) Write(report *CouplingAnalysisReport, options OutputOptions) error {
 	result := report.Result
 
-	out, file, err := createWriter(options.OutputPath)
+	out, file, err := openOutputWriter(options.OutputPath)
 	if err != nil {
 		return err
 	}
@@ -163,11 +149,8 @@ func (w *MarkdownCouplingWriter) Write(report *CouplingAnalysisReport, options O
 	fmt.Fprintln(out, "# Change Coupling Analysis Results")
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "**Repository:** %s\n\n", report.RepoPath)
-	if report.Since != nil {
-		fmt.Fprintf(out, "**Period:** %s to %s\n\n", report.Since.Format("2006-01-02"), report.Until.Format("2006-01-02"))
-	} else {
-		fmt.Fprintf(out, "**Until:** %s\n\n", report.Until.Format("2006-01-02"))
-	}
+	label, value := dateRangeLabelAndValue(report.Since, report.Until)
+	fmt.Fprintf(out, "**%s:** %s\n\n", label, value)
 	fmt.Fprintf(out, "**Statistics:** %d commits, %d files, %d pairs analyzed\n\n",
 		result.TotalCommits, result.TotalFiles, result.TotalPairs)
 
@@ -176,10 +159,7 @@ func (w *MarkdownCouplingWriter) Write(report *CouplingAnalysisReport, options O
 		return nil
 	}
 
-	couplings := result.Couplings
-	if options.Top > 0 && options.Top < len(couplings) {
-		couplings = couplings[:options.Top]
-	}
+	couplings := limitTop(result.Couplings, options.Top)
 
 	// Table header
 	fmt.Fprintln(out, "## Coupled File Pairs")
@@ -195,17 +175,6 @@ func (w *MarkdownCouplingWriter) Write(report *CouplingAnalysisReport, options O
 	}
 
 	return nil
-}
-
-func createWriter(outputPath string) (io.Writer, *os.File, error) {
-	if outputPath != "" {
-		file, err := os.Create(outputPath)
-		if err != nil {
-			return nil, nil, err
-		}
-		return file, file, nil
-	}
-	return os.Stdout, nil, nil
 }
 
 func getRiskLevelEmoji(level string) string {

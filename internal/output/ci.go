@@ -30,12 +30,9 @@ type CIFileEntry struct {
 
 // Write outputs the file analysis report as NDJSON.
 func (w *CIFileWriter) Write(report *FileAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
-	out, file, err := createWriter(options.OutputPath)
+	out, file, err := openOutputWriter(options.OutputPath)
 	if err != nil {
 		return err
 	}

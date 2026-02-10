@@ -3,7 +3,6 @@ package output
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -55,10 +54,7 @@ type JSONFileBreakdown struct {
 
 // Write outputs the file analysis report as JSON.
 func (w *JSONFileWriter) Write(report *FileAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
 	jsonItems := make([]JSONFileItem, len(items))
 	for i, item := range items {
@@ -92,16 +88,10 @@ func (w *JSONFileWriter) Write(report *FileAnalysisReport, options OutputOptions
 		jsonItems[i] = jsonItem
 	}
 
-	var since *string
-	if report.Since != nil {
-		s := report.Since.Format("2006-01-02")
-		since = &s
-	}
-
 	jsonReport := JSONFileReport{
 		RepoPath:    report.RepoPath,
-		Since:       since,
-		Until:       report.Until.Format("2006-01-02"),
+		Since:       formatSinceDate(report.Since),
+		Until:       report.Until.Format(reportDateLayout),
 		GeneratedAt: report.GeneratedAt.Format(time.RFC3339),
 		TotalFiles:  len(report.Items),
 		Items:       jsonItems,
@@ -155,10 +145,7 @@ type JSONCommitBreakdown struct {
 
 // Write outputs the commit analysis report as JSON.
 func (w *JSONCommitWriter) Write(report *CommitAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
 	jsonItems := make([]JSONCommitItem, len(items))
 	for i, item := range items {
@@ -189,16 +176,10 @@ func (w *JSONCommitWriter) Write(report *CommitAnalysisReport, options OutputOpt
 		jsonItems[i] = jsonItem
 	}
 
-	var since *string
-	if report.Since != nil {
-		s := report.Since.Format("2006-01-02")
-		since = &s
-	}
-
 	jsonReport := JSONCommitReport{
 		RepoPath:     report.RepoPath,
-		Since:        since,
-		Until:        report.Until.Format("2006-01-02"),
+		Since:        formatSinceDate(report.Since),
+		Until:        report.Until.Format(reportDateLayout),
 		GeneratedAt:  report.GeneratedAt.Format(time.RFC3339),
 		TotalCommits: len(report.Items),
 		Items:        jsonItems,
@@ -236,10 +217,7 @@ type JSONCouplingItem struct {
 
 // Write outputs the coupling analysis report as JSON.
 func (w *JSONCouplingWriter) Write(report *CouplingAnalysisReport, options OutputOptions) error {
-	couplings := report.Result.Couplings
-	if options.Top > 0 && options.Top < len(couplings) {
-		couplings = couplings[:options.Top]
-	}
+	couplings := limitTop(report.Result.Couplings, options.Top)
 
 	jsonItems := make([]JSONCouplingItem, len(couplings))
 	for i, c := range couplings {
@@ -255,16 +233,10 @@ func (w *JSONCouplingWriter) Write(report *CouplingAnalysisReport, options Outpu
 		}
 	}
 
-	var since *string
-	if report.Since != nil {
-		s := report.Since.Format("2006-01-02")
-		since = &s
-	}
-
 	jsonReport := JSONCouplingReport{
 		RepoPath:     report.RepoPath,
-		Since:        since,
-		Until:        report.Until.Format("2006-01-02"),
+		Since:        formatSinceDate(report.Since),
+		Until:        report.Until.Format(reportDateLayout),
 		GeneratedAt:  report.GeneratedAt.Format(time.RFC3339),
 		TotalCommits: report.Result.TotalCommits,
 		TotalFiles:   report.Result.TotalFiles,
@@ -276,16 +248,15 @@ func (w *JSONCouplingWriter) Write(report *CouplingAnalysisReport, options Outpu
 }
 
 func writeJSON(data interface{}, outputPath string) error {
-	encoder := json.NewEncoder(os.Stdout)
-	if outputPath != "" {
-		file, err := os.Create(outputPath)
-		if err != nil {
-			return err
-		}
+	out, file, err := openOutputWriter(outputPath)
+	if err != nil {
+		return err
+	}
+	if file != nil {
 		defer file.Close()
-		encoder = json.NewEncoder(file)
 	}
 
+	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(data); err != nil {
 		return fmt.Errorf("failed to encode JSON: %w", err)

@@ -13,18 +13,12 @@ type ConsoleFileWriter struct{}
 
 // Write outputs the file analysis report to the console.
 func (w *ConsoleFileWriter) Write(report *FileAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
 	color.Green("File Hotspot Analysis Results")
 	fmt.Printf("Repository: %s\n", report.RepoPath)
-	if report.Since != nil {
-		fmt.Printf("Period: %s to %s\n", report.Since.Format("2006-01-02"), report.Until.Format("2006-01-02"))
-	} else {
-		fmt.Printf("Until: %s\n", report.Until.Format("2006-01-02"))
-	}
+	label, value := dateRangeLabelAndValue(report.Since, report.Until)
+	fmt.Printf("%s: %s\n", label, value)
 	fmt.Printf("Total files analyzed: %d\n\n", len(report.Items))
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -86,18 +80,12 @@ type ConsoleCommitWriter struct{}
 
 // Write outputs the commit analysis report to the console.
 func (w *ConsoleCommitWriter) Write(report *CommitAnalysisReport, options OutputOptions) error {
-	items := report.Items
-	if options.Top > 0 && options.Top < len(items) {
-		items = items[:options.Top]
-	}
+	items := limitTop(report.Items, options.Top)
 
 	color.Green("Commit Risk Analysis Results")
 	fmt.Printf("Repository: %s\n", report.RepoPath)
-	if report.Since != nil {
-		fmt.Printf("Period: %s to %s\n", report.Since.Format("2006-01-02"), report.Until.Format("2006-01-02"))
-	} else {
-		fmt.Printf("Until: %s\n", report.Until.Format("2006-01-02"))
-	}
+	label, value := dateRangeLabelAndValue(report.Since, report.Until)
+	fmt.Printf("%s: %s\n", label, value)
 	fmt.Printf("Total commits analyzed: %d\n\n", len(report.Items))
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -158,11 +146,8 @@ func (w *ConsoleCouplingWriter) Write(report *CouplingAnalysisReport, options Ou
 
 	color.Green("Change Coupling Analysis Results")
 	fmt.Printf("Repository: %s\n", report.RepoPath)
-	if report.Since != nil {
-		fmt.Printf("Period: %s to %s\n", report.Since.Format("2006-01-02"), report.Until.Format("2006-01-02"))
-	} else {
-		fmt.Printf("Until: %s\n", report.Until.Format("2006-01-02"))
-	}
+	label, value := dateRangeLabelAndValue(report.Since, report.Until)
+	fmt.Printf("%s: %s\n", label, value)
 	fmt.Printf("Total commits: %d, Total files: %d, Total pairs: %d\n\n",
 		result.TotalCommits, result.TotalFiles, result.TotalPairs)
 
@@ -176,10 +161,7 @@ func (w *ConsoleCouplingWriter) Write(report *CouplingAnalysisReport, options Ou
 	// Write header
 	fmt.Fprintln(tw, "#\tFile A\tFile B\tCo-Commits\tJaccard\tConfidence\tLift")
 
-	couplings := result.Couplings
-	if options.Top > 0 && options.Top < len(couplings) {
-		couplings = couplings[:options.Top]
-	}
+	couplings := limitTop(result.Couplings, options.Top)
 
 	// Write rows
 	for i, c := range couplings {

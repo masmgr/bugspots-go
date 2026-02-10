@@ -60,9 +60,7 @@ func couplingAction(c *cli.Context) error {
 		}
 
 		// Output results
-		opts := OutputOptions(c)
-		writer := output.NewCouplingReportWriter(opts.Format)
-		if err := writer.Write(report, opts); err != nil {
+		if err := writeCouplingReport(c, report); err != nil {
 			return err
 		}
 
