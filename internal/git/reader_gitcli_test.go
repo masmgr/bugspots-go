@@ -25,8 +25,10 @@ func TestParseGitRawAndNumstat_RenameAndModify(t *testing.T) {
 	body = append(body, []byte("1\t2\ta.txt")...)
 	body = append(body, 0)
 
-	// Numstat for rename (git writes two paths for -z rename entries)
-	body = append(body, []byte("3\t4\told.go")...)
+	// Numstat for rename: with -z, git writes an empty path then old\0new\0
+	body = append(body, []byte("3\t4\t")...)
+	body = append(body, 0) // empty path signals rename
+	body = append(body, []byte("old.go")...)
 	body = append(body, 0)
 	body = append(body, []byte("new.go")...)
 	body = append(body, 0)
@@ -57,6 +59,43 @@ func TestParseGitRawAndNumstat_RenameAndModify(t *testing.T) {
 	}
 	if stats[1].added != 3 || stats[1].deleted != 4 {
 		t.Fatalf("stats[1] = %#v, expected 3/4", stats[1])
+	}
+}
+
+func TestParseGitNumstat_LeadingNewline(t *testing.T) {
+	// Real git output has a newline separating --raw from --numstat sections.
+	body := []byte{}
+
+	// --raw entry: modify foo.js
+	body = append(body, []byte(":100644 100644 aaa bbb M")...)
+	body = append(body, 0)
+	body = append(body, []byte("External/foo.js")...)
+	body = append(body, 0)
+
+	// Newline separator (as real git produces)
+	body = append(body, '\n')
+
+	// --numstat entry
+	body = append(body, []byte("5\t3\tExternal/foo.js")...)
+	body = append(body, 0)
+
+	raw, pos, err := parseGitRawEntries(body)
+	if err != nil {
+		t.Fatalf("parseGitRawEntries: %v", err)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("raw entries = %d, expected 1", len(raw))
+	}
+
+	stats, err := parseGitNumstat(body[pos:], raw)
+	if err != nil {
+		t.Fatalf("parseGitNumstat: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("stats = %d, expected 1", len(stats))
+	}
+	if stats[0].added != 5 || stats[0].deleted != 3 {
+		t.Fatalf("stats[0] = %#v, expected 5/3", stats[0])
 	}
 }
 
