@@ -113,6 +113,48 @@ go build -o bugspots-go .
 ./bugspots-go analyze --repo /path/to/repo --format markdown --output hotspots.md
 ```
 
+### Bugfix Keywords
+
+bugspots-go identifies bugfix commits by matching commit messages against regex patterns. By default, the following patterns are used:
+
+| Pattern | Matches |
+|---------|---------|
+| `\bfix(ed\|es)?\b` | fix, fixed, fixes |
+| `\bbug\b` | bug |
+| `\bhotfix\b` | hotfix |
+| `\bpatch\b` | patch |
+
+You can customize these patterns via CLI flags or the configuration file:
+
+```bash
+# Override with custom patterns (replaces defaults)
+./bugspots-go analyze --repo /path/to/repo \
+  --bug-patterns "\bfix(ed|es)?\b" \
+  --bug-patterns "\bresolve[ds]?\b" \
+  --bug-patterns "\bcve-\d+"
+
+# Match Conventional Commits style
+./bugspots-go analyze --repo /path/to/repo \
+  --bug-patterns "^fix(\(.+\))?:"
+```
+
+Or in `.bugspots.json`:
+
+```json
+{
+  "bugfix": {
+    "patterns": [
+      "\\bfix(ed|es)?\\b",
+      "\\bbug\\b",
+      "\\bhotfix\\b",
+      "\\bresolve[ds]?\\b"
+    ]
+  }
+}
+```
+
+All patterns are case-insensitive. CLI flags override config file settings. For detailed pattern syntax, see [docs/SCORING.md](docs/SCORING.md#7-bugfix-commit-detection).
+
 ### Filtering Files
 
 You can filter which files to analyze using glob patterns, either via CLI flags or configuration file.
@@ -223,6 +265,10 @@ Powered by [doublestar/v4](https://github.com/bmatcuk/doublestar), supporting ri
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--half-life <DAYS>` | Half-life for recency decay (days) | 30 |
+| `--bug-patterns <REGEX>` | Regex patterns for bugfix commit detection (repeatable) | See [Bugfix Keywords](#bugfix-keywords) |
+| `--diff <REFSPEC>` | Analyze only files changed between refs (e.g., origin/main...HEAD) | |
+| `--ci-threshold <SCORE>` | Exit with non-zero status if any file exceeds this risk score | |
+| `--include-complexity` | Include file complexity (line count) in scoring | false |
 
 ### `commits` Command Options
 
@@ -248,12 +294,22 @@ Create a `.bugspots.json` or specify with `--config`:
   "scoring": {
     "halfLifeDays": 30,
     "weights": {
-      "commit": 0.30,
-      "churn": 0.25,
-      "recency": 0.20,
-      "burst": 0.15,
-      "ownership": 0.10
+      "commit": 0.20,
+      "churn": 0.20,
+      "recency": 0.15,
+      "burst": 0.10,
+      "ownership": 0.10,
+      "bugfix": 0.15,
+      "complexity": 0.10
     }
+  },
+  "bugfix": {
+    "patterns": [
+      "\\bfix(ed|es)?\\b",
+      "\\bbug\\b",
+      "\\bhotfix\\b",
+      "\\bpatch\\b"
+    ]
   },
   "burst": {
     "windowDays": 7

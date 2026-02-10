@@ -295,20 +295,99 @@ For a commit modifying 4 files (maximum entropy = log₂(4) = 2.0):
 
 ## 7. Bugfix Commit Detection
 
-Bugfix commits are identified by matching commit messages against specific patterns.
+Bugfix commits are identified by matching commit messages against regex patterns. A commit is classified as a bugfix if its message matches **any one** of the configured patterns.
 
 ### Default Patterns
 
-| Pattern | Matches |
-|---------|---------|
-| `\bfix(ed\|es)?\b` | fix, fixed, fixes |
-| `\bbug\b` | bug |
-| `\bhotfix\b` | hotfix |
-| `\bpatch\b` | patch |
+| Pattern | Matches | Example Commit Messages |
+|---------|---------|------------------------|
+| `\bfix(ed\|es)?\b` | fix, fixed, fixes | "fix login error", "Fixed null pointer", "fixes #123" |
+| `\bbug\b` | bug | "bug: resolve timeout issue", "Fix bug in parser" |
+| `\bhotfix\b` | hotfix | "hotfix: critical auth bypass" |
+| `\bpatch\b` | patch | "patch security vulnerability" |
 
-All patterns are case-insensitive (`(?i)` flag).
+All patterns are case-insensitive (`(?i)` flag is automatically applied). Word boundaries (`\b`) prevent partial matches (e.g., `\bfix\b` does not match "prefix").
 
-Custom patterns can be defined in the `.bugspots.json` configuration file.
+### Customizing Bugfix Keywords
+
+There are two ways to specify custom bugfix detection patterns:
+
+#### Method 1: CLI Flag (`--bug-patterns`)
+
+Use the `--bug-patterns` flag with the `analyze` command. The flag can be specified multiple times to add multiple patterns.
+
+```bash
+# Override default patterns with custom ones
+./bugspots-go analyze --repo /path/to/repo \
+  --bug-patterns "\bfix(ed|es)?\b" \
+  --bug-patterns "\bbug\b" \
+  --bug-patterns "\bresolve[ds]?\b" \
+  --bug-patterns "\bcritical\b"
+
+# Use a simple keyword (word boundary recommended)
+./bugspots-go analyze --repo /path/to/repo \
+  --bug-patterns "\bsecurity\b"
+
+# Match issue/ticket references
+./bugspots-go analyze --repo /path/to/repo \
+  --bug-patterns "\bfix(ed|es)?\b" \
+  --bug-patterns "closes?\s+#\d+"
+```
+
+**Note:** When `--bug-patterns` is specified, it **completely replaces** the default patterns and config file patterns.
+
+#### Method 2: Configuration File (`.bugspots.json`)
+
+Define patterns in the `bugfix.patterns` array of your `.bugspots.json` file:
+
+```json
+{
+  "bugfix": {
+    "patterns": [
+      "\\bfix(ed|es)?\\b",
+      "\\bbug\\b",
+      "\\bhotfix\\b",
+      "\\bpatch\\b",
+      "\\bresolve[ds]?\\b",
+      "\\bcve-\\d+\\b"
+    ]
+  }
+}
+```
+
+**Note:** In JSON, backslashes must be escaped (`\\b` instead of `\b`).
+
+### Pattern Priority
+
+Patterns are resolved in the following order (first match wins):
+
+1. **CLI `--bug-patterns` flags** — if specified, these are used exclusively
+2. **Config file `bugfix.patterns`** — used when no CLI flags are specified
+3. **Default patterns** — used when neither CLI flags nor config file patterns exist
+
+### Pattern Syntax
+
+Patterns use [Go regexp syntax](https://pkg.go.dev/regexp/syntax), which is similar to RE2/PCRE. Common constructs:
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| `\b` | Word boundary | `\bfix\b` matches "fix" but not "prefix" |
+| `(a\|b)` | Alternation | `fix(ed\|es)?` matches fix, fixed, fixes |
+| `?` | Zero or one | `resolve[ds]?` matches resolve, resolved, resolves |
+| `\d+` | One or more digits | `#\d+` matches #123, #4567 |
+| `\s+` | One or more whitespace | `closes\s+#` matches "closes #" |
+| `[abc]` | Character class | `[Bb]ug` matches Bug, bug |
+
+### Examples of Custom Patterns
+
+| Use Case | Pattern | Matches |
+|----------|---------|---------|
+| Japanese bugfix keywords | `修正\|バグ\|不具合` | 修正, バグ, 不具合 |
+| Issue references | `closes?\s+#\d+` | close #123, closes #456 |
+| CVE references | `\bcve-\d+` | CVE-2024-1234 |
+| Revert commits | `\brevert\b` | revert, Revert |
+| Security fixes | `\bsecurity\b\|\bvuln` | security, vulnerability |
+| Conventional Commits | `^fix(\(.+\))?:` | fix: ..., fix(auth): ... |
 
 ---
 
