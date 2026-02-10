@@ -83,7 +83,7 @@ func analyzeAction(c *cli.Context) error {
 			if branch == "" {
 				branch = "HEAD"
 			}
-			lineCounts, err := complexity.FileLineCounts(context.Background(), ctx.RepoPath, branch, pathSet)
+			lineCounts, err := complexity.FileLineCounts(c.Context, ctx.RepoPath, branch, pathSet)
 			if err != nil {
 				return fmt.Errorf("failed to measure file complexity: %w", err)
 			}

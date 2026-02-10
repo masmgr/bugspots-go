@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -125,22 +126,28 @@ func countLinesBatch(ctx context.Context, repoPath string, entries []lsTreeEntry
 		}
 		headerLine = strings.TrimRight(headerLine, "\n\r")
 		parts := strings.Fields(headerLine)
-		if len(parts) < 3 || parts[1] == "missing" {
+
+		// Missing objects have no content body: "<hash> missing"
+		if len(parts) == 2 && parts[1] == "missing" {
 			continue
+		}
+
+		// Malformed header: cannot determine content size, stream unrecoverable
+		if len(parts) < 3 {
+			break
 		}
 
 		size, err := strconv.ParseInt(parts[2], 10, 64)
 		if err != nil {
-			continue
+			// Cannot determine content size; stream unrecoverable
+			break
 		}
 
 		// Read exactly <size> bytes of content
 		content := make([]byte, size)
-		n, err := readFull(reader, content)
-		if err != nil && n < int(size) {
+		if _, err := io.ReadFull(reader, content); err != nil {
 			break
 		}
-		content = content[:n]
 
 		// Read trailing newline after content
 		_, _ = reader.ReadByte()
@@ -156,19 +163,6 @@ func countLinesBatch(ctx context.Context, repoPath string, entries []lsTreeEntry
 	}
 
 	return result, nil
-}
-
-// readFull reads exactly len(buf) bytes from reader.
-func readFull(reader *bufio.Reader, buf []byte) (int, error) {
-	total := 0
-	for total < len(buf) {
-		n, err := reader.Read(buf[total:])
-		total += n
-		if err != nil {
-			return total, err
-		}
-	}
-	return total, nil
 }
 
 // countLines counts the number of lines in content.
