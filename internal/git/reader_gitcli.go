@@ -242,7 +242,11 @@ func parseGitRawEntries(body []byte) ([]gitRawEntry, int, error) {
 func parseGitNumstat(body []byte, rawEntries []gitRawEntry) ([]gitNumstat, error) {
 	stats := make([]gitNumstat, 0, len(rawEntries))
 	i := 0
-	for idx := range rawEntries {
+	// Skip newlines separating --raw output from --numstat output.
+	for i < len(body) && (body[i] == '\n' || body[i] == '\r') {
+		i++
+	}
+	for range rawEntries {
 		added, ok, err := readNumstatInt(body, &i, '\t')
 		if err != nil {
 			return nil, err
@@ -260,12 +264,19 @@ func parseGitNumstat(body []byte, rawEntries []gitRawEntry) ([]gitNumstat, error
 		}
 
 		// Consume file name(s) (we use paths from --raw as the source of truth).
-		if _, ok := readStringUntilNUL(body, &i); !ok {
+		// With -z, renames/copies use the format: \0oldpath\0newpath\0
+		// (the first path field is empty, signaling two paths follow).
+		path, ok := readStringUntilNUL(body, &i)
+		if !ok {
 			return nil, fmt.Errorf("unexpected git --numstat format (path)")
 		}
-		if s := rawEntries[idx].status; len(s) > 0 && (s[0] == 'R' || s[0] == 'C') {
+		if path == "" {
+			// Empty path signals rename/copy: consume old and new paths.
 			if _, ok := readStringUntilNUL(body, &i); !ok {
-				return nil, fmt.Errorf("unexpected git --numstat format (rename path)")
+				return nil, fmt.Errorf("unexpected git --numstat format (rename old path)")
+			}
+			if _, ok := readStringUntilNUL(body, &i); !ok {
+				return nil, fmt.Errorf("unexpected git --numstat format (rename new path)")
 			}
 		}
 
